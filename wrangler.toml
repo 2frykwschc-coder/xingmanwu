@@ -1,0 +1,13 @@
+# 部署 Worker：
+# 1. 安装 Node.js: https://nodejs.org
+# 2. 终端运行: npm install -g wrangler
+# 3. 登录: wrangler login
+# 4. 部署: wrangler deploy worker.js --name xingmanwu-proxy
+# 5. 部署后得到一个 URL，比如 https://xingmanwu-proxy.xxx.workers.dev
+# 6. 在 app.js 里改 WORKER_URL
+
+name = "xingmanwu-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# 免费套餐：10 万次请求/天

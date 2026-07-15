@@ -1,0 +1,13 @@
+node_modules/
+data/*.db
+data/*.txt
+data/*.json
+data/*.log
+data/backfill_state.txt
+data/crawler.log
+data/crawler.txt
+data/fix_*.txt
+data/rematch*.txt
+data/crawl_mk.log
+data/mapping_state.json
+0
