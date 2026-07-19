@@ -39,8 +39,8 @@ async function getAllGenres(env) {
 }
 
 // ── 路由分发 ──
-export async function onRequest(context) {
-  const { request, env } = context;
+export default { async fetch(request, env, ctx) { const context = { request, env };
+  // request, env already from params
   const url = new URL(request.url);
   const path = url.pathname;       // /api/manga, /api/manga/123, etc.
   const method = request.method;
@@ -538,4 +538,5 @@ export async function onRequest(context) {
   } catch (e) {
     return json({ error: e.message }, 500);
   }
+}
 }

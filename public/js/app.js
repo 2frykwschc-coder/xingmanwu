@@ -1,4 +1,5 @@
 // 部署 Worker 后把 URL 填这里，留空则跳过
+const API_URL = "https://xingmanwu-api.rtxn7yj57c.workers.dev";
 const WORKER_URL = ''; // e.g. 'https://xingmanwu-proxy.xxx.workers.dev'
 
 let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id),api=async u=>(await fetch(u)).json(),post=(u,d)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}),del=u=>fetch(u,{method:'DELETE'});let sugTimer;
