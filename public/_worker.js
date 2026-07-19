@@ -125,4 +125,4 @@ export default {
       return json({ error: e.message }, 500);
     }
   }
-};
+};.
