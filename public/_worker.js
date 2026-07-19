@@ -44,7 +44,6 @@ export default {
 
     if (m === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*' } });
 
-    // Static files
     if (!path.startsWith('/api/')) {
       const f = path === '/' ? '/index.html' : path;
       const asset = assets[f];
@@ -55,17 +54,16 @@ export default {
       return new Response('Not Found', { status: 404 });
     }
 
-    // API routes
     const p = path.split('/').filter(Boolean);
     try {
       if (m === 'GET' && p[1] === 'search') {
         const q = url.searchParams.get('q') || '';
-        const page = parseInt(url.searchParams.get('page') || '1');
-        const lim = 48; const off = (page - 1) * lim;
+        const pg = parseInt(url.searchParams.get('page') || '1');
+        const lim = 48; const off = (pg - 1) * lim;
         const like = '%' + q.replace(/'/g, "''") + '%';
         const r1 = await env.DB.prepare('SELECT * FROM manga WHERE title LIKE ?1 OR title_native LIKE ?1 OR author LIKE ?1 ORDER BY id LIMIT ?2 OFFSET ?3').bind(like, lim, off).all();
         const r2 = await env.DB.prepare('SELECT COUNT(*) as c FROM manga WHERE title LIKE ?1 OR title_native LIKE ?1 OR author LIKE ?1').bind(like).all();
-        return json({ data: r1.results, total: r2.results[0].c, page, limit: lim });
+        return json({ data: r1.results, total: r2.results[0].c, page: pg, limit: lim });
       }
       if (m === 'GET' && p[1] === 'manga' && p[2]) {
         const r = await env.DB.prepare('SELECT * FROM manga WHERE id=?1').bind(parseInt(p[2])).all();
@@ -82,21 +80,15 @@ export default {
       }
       if (m === 'GET' && p[1] === 'browse') {
         const genre = url.searchParams.get('genre') || '';
-        const page = parseInt(url.searchParams.get('page') || '1');
-        const lim = 48; const off = (page - 1) * lim;
+        const pg = parseInt(url.searchParams.get('page') || '1');
+        const lim = 48; const off = (pg - 1) * lim;
         if (genre) {
           const like = '%' + genre.replace(/'/g, "''") + '%';
-          const [d, c] = await Promise.all([
-            env.DB.prepare('SELECT * FROM manga WHERE genres LIKE ?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(like, lim, off).all(),
-            env.DB.prepare('SELECT COUNT(*) as c FROM manga WHERE genres LIKE ?1').bind(like).all()
-          ]);
-          return json({ data: d.results, total: c.results[0].c, page, limit: lim });
+          const [d, c] = await Promise.all([env.DB.prepare('SELECT * FROM manga WHERE genres LIKE ?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(like, lim, off).all(), env.DB.prepare('SELECT COUNT(*) as c FROM manga WHERE genres LIKE ?1').bind(like).all()]);
+          return json({ data: d.results, total: c.results[0].c, page: pg, limit: lim });
         }
-        const [d, c] = await Promise.all([
-          env.DB.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim, off).all(),
-          env.DB.prepare('SELECT COUNT(*) as c FROM manga').all()
-        ]);
-        return json({ data: d.results, total: c.results[0].c, page, limit: lim });
+        const [d, c] = await Promise.all([env.DB.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim, off).all(), env.DB.prepare('SELECT COUNT(*) as c FROM manga').all()]);
+        return json({ data: d.results, total: c.results[0].c, page: pg, limit: lim });
       }
       if (m === 'GET' && p[1] === 'random') {
         const r = await env.DB.prepare('SELECT * FROM manga ORDER BY RANDOM() LIMIT 20').all();
@@ -105,23 +97,14 @@ export default {
       }
       if (m === 'GET' && p[1] === 'genres') return json(await getGenres(env));
       if (m === 'GET' && p[1] === 'stats') {
-        const [mc, dc, fc] = await Promise.all([
-          env.DB.prepare('SELECT COUNT(*) as c FROM manga').all(),
-          env.DB.prepare('SELECT COUNT(*) as c FROM dex_mapping').all(),
-          env.DB.prepare('SELECT COUNT(*) as c FROM fix_alt').all()
-        ]);
+        const [mc, dc, fc] = await Promise.all([env.DB.prepare('SELECT COUNT(*) as c FROM manga').all(), env.DB.prepare('SELECT COUNT(*) as c FROM dex_mapping').all(), env.DB.prepare('SELECT COUNT(*) as c FROM fix_alt').all()]);
         return json({ manga: mc.results[0].c, dex_mapping: dc.results[0].c, fix_alt: fc.results[0].c });
       }
       if (p[1] === 'collections') {
         if (m === 'GET') return json((await env.DB.prepare('SELECT * FROM collections ORDER BY id DESC').all()).results);
         if ((m === 'POST' || m === 'DELETE') && p[2]) {
-          if (m === 'POST') {
-            const b = await request.json();
-            await env.DB.prepare('INSERT OR REPLACE INTO collections(id,title,cover_url,chapters,status,author,genres) VALUES(?1,?2,?3,?4,?5,?6,?7)')
-              .bind(p[2], b.title, b.cover_url, b.chapters || '', b.status || '', b.author || '', JSON.stringify(b.genres || [])).run();
-          } else {
-            await env.DB.prepare('DELETE FROM collections WHERE id=?1').bind(p[2]).run();
-          }
+          if (m === 'POST') { const b = await request.json(); await env.DB.prepare('INSERT OR REPLACE INTO collections(id,title,cover_url,chapters,status,author,genres) VALUES(?1,?2,?3,?4,?5,?6,?7)').bind(p[2], b.title, b.cover_url, b.chapters || '', b.status || '', b.author || '', JSON.stringify(b.genres || [])).run(); }
+          else await env.DB.prepare('DELETE FROM collections WHERE id=?1').bind(p[2]).run();
           return json({ success: true });
         }
       }
@@ -143,4 +126,3 @@ export default {
     }
   }
 };
-// trigger deploy
