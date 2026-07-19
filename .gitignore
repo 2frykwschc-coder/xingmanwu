@@ -1,6 +1,7 @@
 node_modules/
 data/*.db
-!data/xingmanwu.db
+data/*.bak
+data/*.sql
 data/*.txt
 data/*.json
 data/*.log
@@ -12,3 +13,4 @@ data/rematch*.txt
 data/crawl_mk.log
 data/mapping_state.json
 0
+scripts/
