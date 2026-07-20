@@ -5,8 +5,9 @@ export default{
     const u=new URL(r.url),p=u.pathname,m=r.method;
     if(m==='OPTIONS')return new Response(null,{headers:{'Access-Control-Allow-Origin':'*'}});
     if(p.startsWith('/api/')){
+      const apiPath=p.slice(4); // strip /api prefix → just /genres etc
       try{
-        const q=await fetch(W+p+u.search,{method:m,headers:m==='POST'?{'Content-Type':'application/json'}:{},body:m==='POST'?r.body:null});
+        const q=await fetch(W+apiPath+u.search,{method:m,headers:m==='POST'?{'Content-Type':'application/json'}:{},body:m==='POST'?r.body:null});
         return new Response(JSON.stringify(await q.json()),{headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'}});
       }catch(e){return new Response(JSON.stringify({error:e.message}),{status:500,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'}})}
     }
