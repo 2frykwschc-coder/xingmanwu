@@ -2,92 +2,106 @@ const A={"/index.html":"<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><met
 export default{
   async fetch(r,e){
     const u=new URL(r.url),p=u.pathname,m=r.method;
-    const db=e.DB;
     if(m==='OPTIONS')return new Response(null,{headers:{'Access-Control-Allow-Origin':'*'}});
-
-    // Static files
     if(!p.startsWith('/api/')){
       const f=p==='/'?'/index.html':p;
       if(A[f])return new Response(A[f],{headers:{'content-type':f.endsWith('.css')?'text/css':f.endsWith('.js')?'application/javascript':'text/html','cache-control':'public,max-age=0,must-revalidate'}});
       return new Response('Not Found',{status:404});
     }
-
-    // API routes
     const pp=p.replace('/api/','').split('/').filter(Boolean);
-    const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'}});
+    const db=e.DB;
+    const J=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'}});
     try{
       // genres
       if(m==='GET'&&pp[0]==='genres'){
         const r=await db.prepare("SELECT genres FROM manga WHERE genres IS NOT NULL AND genres != '[]'").all();
         const s=new Set();
         for(const x of r.results)try{JSON.parse(x.genres).forEach(g=>g&&s.add(g.trim()))}catch{}
-        return json([...s].sort());
+        return J([...s].sort());
       }
       // stats
       if(m==='GET'&&pp[0]==='stats'){
         const[mc,dc,fc]=await Promise.all([db.prepare('SELECT COUNT(*) as c FROM manga').all(),db.prepare('SELECT COUNT(*) as c FROM dex_mapping').all(),db.prepare('SELECT COUNT(*) as c FROM fix_alt').all()]);
-        return json({manga:mc.results[0].c,dex_mapping:dc.results[0].c,fix_alt:fc.results[0].c});
+        return J({manga:mc.results[0].c,dex_mapping:dc.results[0].c,fix_alt:fc.results[0].c});
+      }
+      // manga list (no id) AND manga detail (with id)
+      if(m==='GET'&&pp[0]==='manga'){
+        if(pp[1]){
+          // Detail
+          const r=await db.prepare('SELECT * FROM manga WHERE id=?1').bind(parseInt(pp[1])).all();
+          if(!r.results.length)return J({error:'not found'},404);
+          const mr=r.results[0];let g=[];try{g=JSON.parse(mr.genres||'[]')}catch{}
+          let sugg=[];
+          if(g.length&&mr.title){const cond=g.map(x=>"genres LIKE '%"+x.replace(/'/g,"''")+"%'").join(' OR ');const s=await db.prepare('SELECT id,title FROM manga WHERE id!=?1 AND ('+cond+') ORDER BY RANDOM() LIMIT 20').bind(mr.id).all();sugg=s.results||[]}
+          return J({...mr,genres:g,suggestions:sugg});
+        }else{
+          // List with pagination
+          const q=u.searchParams.get('q')||'',sort=u.searchParams.get('sort')||'id',genre=u.searchParams.get('genre')||'',format=u.searchParams.get('format')||'',region=u.searchParams.get('region')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=parseInt(u.searchParams.get('limit')||'30'),off=(pg-1)*lim;
+          let where=[],params=[];
+          if(q){const like='%'+q.replace(/'/g,"''")+'%';where.push('(title LIKE ? OR title_native LIKE ? OR author LIKE ?)');params.push(like,like,like)}
+          if(genre){const like='%'+genre.replace(/'/g,"''")+'%';where.push('genres LIKE ?');params.push(like)}
+          if(format){where.push('format=?');params.push(format)}
+          if(region==='jp'){where.push("title_native REGEXP '[\\u4E00-\\u9FFF]'")}
+          else if(region==='kr'){where.push("title_native REGEXP '[\\uAC00-\\uD7AF]'")}
+          else if(region==='en'){where.push("title_native REGEXP '[a-zA-Z]'")}
+          const w=where.length?' WHERE '+where.join(' AND '):'';
+          const order=sort==='popularity'?'ORDER BY popularity ASC':sort==='score'?'ORDER BY score DESC':sort==='favorites'?'ORDER BY favorites DESC':sort==='year'?'ORDER BY start_year DESC':'ORDER BY id DESC';
+          const r=await db.prepare('SELECT * FROM manga'+w+' '+order+' LIMIT ? OFFSET ?').bind(...params,lim,off).all();
+          const c=await db.prepare('SELECT COUNT(*) as c FROM manga'+w).bind(...params).all();
+          return J({data:r.results,total:c.results[0].c,page:pg,totalPages:Math.ceil(c.results[0].c/lim),limit:lim});
+        }
+      }
+      // recent
+      if(m==='GET'&&pp[0]==='recent'){
+        const r=await db.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT 48').all();
+        return J({data:r.results});
       }
       // search
       if(m==='GET'&&pp[0]==='search'){
         const q=u.searchParams.get('q')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=48,off=(pg-1)*lim,like='%'+q.replace(/'/g,"''")+'%';
         const[r1,r2]=await Promise.all([db.prepare('SELECT * FROM manga WHERE title LIKE ?1 OR title_native LIKE ?1 OR author LIKE ?1 ORDER BY id LIMIT ?2 OFFSET ?3').bind(like,lim,off).all(),db.prepare('SELECT COUNT(*) as c FROM manga WHERE title LIKE ?1 OR title_native LIKE ?1 OR author LIKE ?1').bind(like).all()]);
-        return json({data:r1.results,total:r2.results[0].c,page:pg,limit:lim});
-      }
-      // manga detail
-      if(m==='GET'&&pp[0]==='manga'&&pp[1]){
-        const r=await db.prepare('SELECT * FROM manga WHERE id=?1').bind(parseInt(pp[1])).all();
-        if(!r.results.length)return json({error:'not found'},404);
-        const mr=r.results[0];let g=[];try{g=JSON.parse(mr.genres||'[]')}catch{}
-        let sugg=[];
-        if(g.length&&mr.title){const cond=g.map(x=>"genres LIKE '%"+x.replace(/'/g,"''")+"%'").join(' OR ');const s=await db.prepare('SELECT id,title FROM manga WHERE id!=?1 AND ('+cond+') ORDER BY RANDOM() LIMIT 20').bind(mr.id).all();sugg=s.results||[]}
-        return json({...mr,genres:g,suggestions:sugg});
-      }
-      // recent
-      if(m==='GET'&&pp[0]==='recent'){
-        const r=await db.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT 48').all();
-        return json({data:r.results});
-      }
-      // browse
-      if(m==='GET'&&pp[0]==='browse'){
-        const genre=u.searchParams.get('genre')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=48,off=(pg-1)*lim;
-        if(genre){const like='%'+genre.replace(/'/g,"''")+'%';const[d,c]=await Promise.all([db.prepare('SELECT * FROM manga WHERE genres LIKE ?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(like,lim,off).all(),db.prepare('SELECT COUNT(*) as c FROM manga WHERE genres LIKE ?1').bind(like).all()]);return json({data:d.results,total:c.results[0].c,page:pg,limit:lim})}
-        const[d,c]=await Promise.all([db.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim,off).all(),db.prepare('SELECT COUNT(*) as c FROM manga').all()]);
-        return json({data:d.results,total:c.results[0].c,page:pg,limit:lim});
+        return J({data:r1.results,total:r2.results[0].c,page:pg,limit:lim});
       }
       // suggestions
       if(m==='GET'&&pp[0]==='suggestions'){
         const q=u.searchParams.get('q')||'';
-        if(q){const like='%'+q.replace(/'/g,"''")+'%';const r=await db.prepare('SELECT id,title,cover_url,score FROM manga WHERE title LIKE ?1 LIMIT 20').bind(like).all();return json({data:r.results})}
+        if(q){const like='%'+q.replace(/'/g,"''")+'%';const r=await db.prepare('SELECT id,title,cover_url,score FROM manga WHERE title LIKE ?1 LIMIT 20').bind(like).all();return J({data:r.results})}
         const[hot,fresh]=await Promise.all([db.prepare('SELECT id,title,cover_url,score FROM manga WHERE score IS NOT NULL ORDER BY score DESC LIMIT 6').all(),db.prepare('SELECT id,title,cover_url,score FROM manga ORDER BY id DESC LIMIT 6').all()]);
-        return json({data:{hot:hot.results,fresh:fresh.results}});
+        return J({data:{hot:hot.results,fresh:fresh.results}});
+      }
+      // browse (alternative route)
+      if(m==='GET'&&pp[0]==='browse'){
+        const genre=u.searchParams.get('genre')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=48,off=(pg-1)*lim;
+        if(genre){const like='%'+genre.replace(/'/g,"''")+'%';const[d,c]=await Promise.all([db.prepare('SELECT * FROM manga WHERE genres LIKE ?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(like,lim,off).all(),db.prepare('SELECT COUNT(*) as c FROM manga WHERE genres LIKE ?1').bind(like).all()]);return J({data:d.results,total:c.results[0].c,page:pg,limit:lim})}
+        const[d,c]=await Promise.all([db.prepare('SELECT * FROM manga ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim,off).all(),db.prepare('SELECT COUNT(*) as c FROM manga').all()]);
+        return J({data:d.results,total:c.results[0].c,page:pg,limit:lim});
       }
       // random
       if(m==='GET'&&pp[0]==='random'){
         const r=await db.prepare('SELECT * FROM manga ORDER BY RANDOM() LIMIT 20').all();
         r.results.forEach(x=>{try{x.genres=JSON.parse(x.genres||'[]')}catch{x.genres=[]}});
-        return json(r.results);
+        return J(r.results);
       }
       // regions
       if(m==='GET'&&pp[0]==='regions'){
         const all=await db.prepare('SELECT id,title_native FROM manga WHERE title_native IS NOT NULL').all();
         let jp=0,kr=0,en=0,other=0;
         for(const r of all.results){const nt=r.title_native||'';if(nt.match(/[\uAC00-\uD7AF]/))kr++;else if(nt.match(/[\u4E00-\u9FFF]/))jp++;else if(nt.match(/[a-zA-Z]/))en++;else other++}
-        return json([{id:'jp',label:'日本',count:jp},{id:'kr',label:'韩国',count:kr},{id:'en',label:'欧美',count:en},{id:'other',label:'其他',count:other}]);
+        return J([{id:'jp',label:'日本',count:jp},{id:'kr',label:'韩国',count:kr},{id:'en',label:'欧美',count:en},{id:'other',label:'其他',count:other}]);
       }
       // dex
-      if(m==='GET'&&pp[0]==='dex'&&pp[1]==='search'&&pp[2]){const id=parseInt(pp[2]);const map=await db.prepare('SELECT * FROM dex_mapping WHERE manga_id=?1').bind(id).all();if(!map.results.length)return json({found:false});const r=map.results[0];return json({found:true,manga:{id:r.dex_id,title:r.dex_title},hasReadableChapters:true})}
-      if(m==='GET'&&pp[0]==='dex'&&pp[1]==='alt-search'&&pp[2]){const id=parseInt(pp[2]);const fix=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1').bind(id).all();if(!fix.results.length)return json({found:false});const f=fix.results[0];return json({found:true,alt:{title:f.title}})}
-      if(m==='GET'&&pp[0]==='ext'&&pp[1]==='search'&&pp[2]){const id=parseInt(pp[2]);const fix=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1').bind(id).all();const links=fix.results.length?fix.results.map(f=>({name:f.source,url:f.source_url})):[{name:'Comick',url:''},{name:'MangaDex',url:''}];return json({links})}
+      if(m==='GET'&&pp[0]==='dex'&&pp[1]==='search'&&pp[2]){const id=parseInt(pp[2]);const map=await db.prepare('SELECT * FROM dex_mapping WHERE manga_id=?1').bind(id).all();if(!map.results.length)return J({found:false});const r=map.results[0];return J({found:true,manga:{id:r.dex_id,title:r.dex_title},hasReadableChapters:true})}
+      if(m==='GET'&&pp[0]==='dex'&&pp[1]==='alt-search'&&pp[2]){const id=parseInt(pp[2]);const fix=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1').bind(id).all();if(!fix.results.length)return J({found:false});const f=fix.results[0];return J({found:true,alt:{title:f.title}})}
+      if(m==='GET'&&pp[0]==='ext'&&pp[1]==='search'&&pp[2]){const id=parseInt(pp[2]);const fix=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1').bind(id).all();const links=fix.results.length?fix.results.map(f=>({name:f.source,url:f.source_url})):[{name:'Comick',url:''},{name:'MangaDex',url:''}];return J({links})}
       // zero-chapters
-      if(m==='GET'&&pp[0]==='zero-chapters'){const pg=parseInt(u.searchParams.get('page')||'1'),lim=parseInt(u.searchParams.get('limit')||'20'),off=(pg-1)*lim;const r=await db.prepare('SELECT id,title,title_native,cover_url,score FROM manga WHERE chapters IS NULL OR chapters=0 ORDER BY id LIMIT ?1 OFFSET ?2').bind(lim,off).all();const r2=await db.prepare('SELECT COUNT(*) as c FROM manga WHERE chapters IS NULL OR chapters=0').all();return json({data:r.results,total:r2.results[0].c,page:pg})}
+      if(m==='GET'&&pp[0]==='zero-chapters'){const pg=parseInt(u.searchParams.get('page')||'1'),lim=parseInt(u.searchParams.get('limit')||'20'),off=(pg-1)*lim;const r=await db.prepare('SELECT id,title,title_native,cover_url,score FROM manga WHERE chapters IS NULL OR chapters=0 ORDER BY id LIMIT ?1 OFFSET ?2').bind(lim,off).all();const r2=await db.prepare('SELECT COUNT(*) as c FROM manga WHERE chapters IS NULL OR chapters=0').all();return J({data:r.results,total:r2.results[0].c,page:pg})}
       // fix-alt (POST)
-      if(m==='POST'&&pp[0]==='fix-alt'){const b=await r.json();const existing=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1 AND source=?2').bind(b.manga_id,b.source).all();if(!existing.results.length){await db.prepare('INSERT INTO fix_alt(manga_id,source,source_url,chapters,title) VALUES(?1,?2,?3,?4,?5)').bind(b.manga_id,b.source,b.source_url,b.chapters||0,b.source_title||'').run();await db.prepare('UPDATE manga SET chapters=?1 WHERE id=?2').bind(b.chapters,b.manga_id).run()}return json({success:true})}
+      if(m==='POST'&&pp[0]==='fix-alt'){const b=await r.json();const existing=await db.prepare('SELECT * FROM fix_alt WHERE manga_id=?1 AND source=?2').bind(b.manga_id,b.source).all();if(!existing.results.length){await db.prepare('INSERT INTO fix_alt(manga_id,source,source_url,chapters,title) VALUES(?1,?2,?3,?4,?5)').bind(b.manga_id,b.source,b.source_url,b.chapters||0,b.source_title||'').run();await db.prepare('UPDATE manga SET chapters=?1 WHERE id=?2').bind(b.chapters,b.manga_id).run()}return J({success:true})}
       // collection
-      if(pp[0]==='collection'){if(m==='POST'){const b=await r.json();const existing=await db.prepare('SELECT * FROM collections WHERE manga_id=?1').bind(b.manga_id).all();if(existing.results.length){await db.prepare('UPDATE collections SET status=?1 WHERE manga_id=?2').bind(b.status,b.manga_id).run()}else{await db.prepare('INSERT INTO collections(manga_id,status,title,cover_url,chapters,score) VALUES(?1,?2,?3,?4,?5,?6)').bind(b.manga_id,b.status,b.title||'',b.cover_url||'',b.chapters||0,b.score||0).run()}return json({success:true})};if(m==='DELETE'&&pp[1]){await db.prepare('DELETE FROM collections WHERE manga_id=?1').bind(parseInt(pp[1])).run();return json({success:true})}}
+      if(pp[0]==='collection'){if(m==='POST'){const b=await r.json();const existing=await db.prepare('SELECT * FROM collections WHERE manga_id=?1').bind(b.manga_id).all();if(existing.results.length){await db.prepare('UPDATE collections SET status=?1 WHERE manga_id=?2').bind(b.status,b.manga_id).run()}else{await db.prepare('INSERT INTO collections(manga_id,status,title,cover_url,chapters,score) VALUES(?1,?2,?3,?4,?5,?6)').bind(b.manga_id,b.status,b.title||'',b.cover_url||'',b.chapters||0,b.score||0).run()}return J({success:true})};if(m==='DELETE'&&pp[1]){await db.prepare('DELETE FROM collections WHERE manga_id=?1').bind(parseInt(pp[1])).run();return J({success:true})}}
       // my-collections
-      if(m==='GET'&&pp[0]==='my-collections'){const status=u.searchParams.get('status')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=30,off=(pg-1)*lim;let q,cq;if(status){q=db.prepare('SELECT * FROM collections WHERE status=?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(status,lim,off);cq=db.prepare('SELECT COUNT(*) as c FROM collections WHERE status=?1').bind(status)}else{q=db.prepare('SELECT * FROM collections ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim,off);cq=db.prepare('SELECT COUNT(*) as c FROM collections')};const[d,c]=await Promise.all([q.all(),cq.all()]);return json({data:d.results,total:c.results[0].c,page:pg,totalPages:Math.ceil(c.results[0].c/lim)})}
-      return json({error:'not found'},404);
-    }catch(e){return json({error:e.message},500)}
+      if(m==='GET'&&pp[0]==='my-collections'){const status=u.searchParams.get('status')||'',pg=parseInt(u.searchParams.get('page')||'1'),lim=30,off=(pg-1)*lim;let q,cq;if(status){q=db.prepare('SELECT * FROM collections WHERE status=?1 ORDER BY id DESC LIMIT ?2 OFFSET ?3').bind(status,lim,off);cq=db.prepare('SELECT COUNT(*) as c FROM collections WHERE status=?1').bind(status)}else{q=db.prepare('SELECT * FROM collections ORDER BY id DESC LIMIT ?1 OFFSET ?2').bind(lim,off);cq=db.prepare('SELECT COUNT(*) as c FROM collections')};const[d,c]=await Promise.all([q.all(),cq.all()]);return J({data:d.results,total:c.results[0].c,page:pg,totalPages:Math.ceil(c.results[0].c/lim)})}
+      return J({error:'not found'},404);
+    }catch(e){return J({error:e.message},500)}
   }
 };
