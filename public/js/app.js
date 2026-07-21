@@ -8,10 +8,18 @@ let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id),api=async
 let currentUser=null;
 const TOKEN_KEY='xingmanwu_token';
 
+// 带 auth header 的请求
+async function apiWithToken(url,token){
+  try{
+    const r=await fetch(url,{headers:{'Authorization':'Bearer '+token}});
+    return r.json();
+  }catch{return{user:null}}
+}
+
 // 页面加载时恢复登录
 (async function initAuth(){
   const t=localStorage.getItem(TOKEN_KEY);
-  if(t){try{const d=await api('/api/auth/me',{headers:{'Authorization':'Bearer '+t}});if(d.user){currentUser=d.user;updateUserBtn()}}catch{}}
+  if(t){try{const d=await apiWithToken('/api/auth/me',t);if(d&&d.user){currentUser=d.user;updateUserBtn()}}catch{}}
 })();
 
 function updateUserBtn(){
