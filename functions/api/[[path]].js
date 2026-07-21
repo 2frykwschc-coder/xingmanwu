@@ -814,6 +814,20 @@ export async function onRequest(context) {
       return j({ user: { id: s.user_id, username: s.username, createdAt: s.created_at, lastLogin: s.last_login } });
     }
 
+    // -- POST /api/auth/delete-user (临时清理用) --
+    if (m === 'POST' && path === 'auth/delete-user') {
+      const body = await request.json();
+      const { username, secret } = body;
+      if (secret !== 'xingmanwu-cleanup') return j({ error: 'no' }, 403);
+      if (!username) return j({ error: 'need username' }, 400);
+      const u = await db.prepare('SELECT id FROM users WHERE username=?').bind(username).all();
+      if (u.results.length) {
+        await db.prepare('DELETE FROM sessions WHERE user_id=?').bind(u.results[0].id).run();
+        await db.prepare('DELETE FROM users WHERE id=?').bind(u.results[0].id).run();
+      }
+      return j({ ok: true, deleted: username });
+    }
+
     // -- 兜底 --
     return j({ error: 'not found' }, 404);
   } catch (e) {
