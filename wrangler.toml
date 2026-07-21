@@ -9,7 +9,7 @@
 # 绑定名: DB (在 functions/api/[[path]].js 中通过 env.DB 访问)
 # [[d1_databases]]
 # binding = "DB"
-# database_name = "xingmanwu"
+# database_name = "xingmanwu-proxy"
 # database_id = "<创建后获得 ID>"
 
 # ── Worker（外部资源代理） ──
