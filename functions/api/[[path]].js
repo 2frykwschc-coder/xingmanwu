@@ -735,9 +735,9 @@ export async function onRequest(context) {
 
     // 自动建表
     try {
-      await db.prepare('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TEXT DEFAULT (datetime("now")), last_login TEXT)').run();
-      await db.prepare('CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime("now")), FOREIGN KEY(user_id) REFERENCES users(id))').run();
-    } catch(e) {}
+      await db.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TEXT, last_login TEXT)").run();
+      await db.prepare("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT)").run();
+    } catch(e) {console.log('DB INIT ERROR:', e.message)}
 
     // -- POST /api/auth/register --
     if (m === 'POST' && path === 'auth/register') {
