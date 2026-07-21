@@ -1,8 +1,8 @@
-<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta http-equiv=Cache-Control content="no-cache, no-store, must-revalidate"><meta http-equiv=Pragma content=no-cache><title>星漫屋 ✨</title><link rel=stylesheet href=/css/style.css?v=20><link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta http-equiv=Cache-Control content="no-cache, no-store, must-revalidate"><meta http-equiv=Pragma content=no-cache><title>星漫屋 ✨</title><link rel=stylesheet href=/css/style.css?v=21><link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
 <div id=app>
 <header class=header><div class=header-inner><a href=# class=logo onclick=navigate('home')>✨ 星漫屋</a>
 <div class=search-box style=position:relative><input id=s placeholder=搜索漫画... autocomplete=off onkeydown="if(event.key==='Enter')doSearch()" onfocus=showSuggestions() oninput=filterSuggestions() onblur="setTimeout(()=>{$('sd').style.display='none'},200)"><button onclick=doSearch()>🔍</button><div id=sd class=search-dropdown style=display:none></div></div>
-<nav class=nav><a href=# onclick=navigate('browse')>📚浏览</a><a href=# onclick=navigate('collections')>❤️收藏</a><a href=# onclick=navigate('stats')>📊统计</a></nav></div></header>
+<nav class=nav><a href=# onclick=navigate('browse')>📚浏览</a><a href=# onclick=navigate('collections')>❤️收藏</a><a href=# onclick=navigate('stats')>📊统计</a><a href=# id=userBtn onclick=showAuth() style=font-size:16px>👤</a></nav></div></header>
 <main id=m>
 <section id=ph class="page active"><div class=hero><h1>✨ 星漫屋</h1><p>发现·收藏·追更</p><div class=hero-stats id=hs></div><div class=hero-actions><button class="btn btn-primary" onclick=navigate('browse')>开始浏览</button><button class="btn btn-secondary" onclick=navigate('collections')>我的收藏</button></div></div><div class=section><h2>🔥 新入库</h2><div class=manga-grid id=rg></div></div></section>
 <section id=pb class=page><div class=section><div class=browse-header><h2>📚 全部</h2><div class=browse-controls>
@@ -11,8 +11,19 @@
 <select id=ff onchange=loadBrowse()><option value=>全部格式</option><option value=MANGA>漫画</option><option value=NOVEL>小说</option><option value=ONE_SHOT>短篇</option></select><select id=rf onchange=loadBrowse()><option value=>全部地区</option></select></div></div><div class=manga-grid id=bg></div><div class=pagination id=bp></div></div></section>
 <section id=pc class=page><div class=section><div class=browse-header><h2>❤️ 我的收藏</h2><div class=browse-controls><select id=cs onchange=loadCollections()><option value=>全部</option><option value=reading>📖在看</option><option value=completed>✅看完</option><option value=plan_to_read>📌想看</option><option value=on_hold>⏸️搁置</option><option value=dropped>❌弃番</option></select></div></div><div id=cl></div><div class=pagination id=cp></div></div></section>
 <section id=ps class=page><div class=section><h2>📊 统计</h2><div id=sc></div></div></section>
+
+<!-- 登录/注册弹窗 -->
+<div id=authModal class=modal><div class=modal-backdrop onclick=closeAuth()></div><div class=modal-content style=max-width:380px><div style=padding:24px><div class=auth-tabs><span id=atabL class=active onclick=switchAuth('login')>登录</span><span id=atabR onclick=switchAuth('register')>注册</span></div>
+<div id=authForm style=margin-top:20px>
+<input id=au class=auth-input placeholder=用户名 maxlength=20>
+<input id=ap class=auth-input type=password placeholder=密码>
+<input id=ap2 class=auth-input type=password placeholder=确认密码 style=display:none>
+<div id=authErr style=color:#e57373;font-size:13px;margin:8px 0;display:none></div>
+<button class="btn btn-primary" style=width:100%;padding:12px;margin-top:8px onclick=doAuth()>登录</button>
+</div></div></div></div>
+
 <div id=modal class=modal><div class=modal-backdrop onclick=closeModal()></div><div class=modal-content id=mc></div></div>
 <div id=reader class=reader><div class=reader-inner><div id=rm class=reader-menu></div><div id=rc class=reader-chapters></div><div id=rp class=reader-pages></div></div></div>
 </main></div>
-<script src=/js/app.js?v=20></script>
+<script src=/js/app.js?v=21></script>
 // trigger rebuild

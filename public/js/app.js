@@ -3,6 +3,84 @@ const API_URL = "https://xingmanwu-api.rtxn7yj57c.workers.dev";
 const WORKER_URL = ''; // e.g. 'https://xingmanwu-proxy.xxx.workers.dev'
 
 let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id),api=async u=>(await fetch(u)).json(),post=(u,d)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}),del=u=>fetch(u,{method:'DELETE'});let sugTimer;
+
+/* ========== 用户系统 ========== */
+let currentUser=null;
+const TOKEN_KEY='xingmanwu_token';
+
+// 页面加载时恢复登录
+(async function initAuth(){
+  const t=localStorage.getItem(TOKEN_KEY);
+  if(t){try{const d=await api('/api/auth/me',{headers:{'Authorization':'Bearer '+t}});if(d.user){currentUser=d.user;updateUserBtn()}}catch{}}
+})();
+
+function updateUserBtn(){
+  const btn=$('userBtn');
+  if(currentUser){
+    btn.textContent='👤 '+currentUser.username;
+    btn.onclick=()=>{if(confirm('退出登录 '+currentUser.username+'？'))logout()}
+  }else{
+    btn.textContent='👤';
+    btn.onclick=showAuth;
+  }
+}
+
+async function logout(){
+  localStorage.removeItem(TOKEN_KEY);
+  currentUser=null;
+  updateUserBtn();
+  closeAuth();
+}
+
+// auth 弹窗用 fetch（带 auth header）
+async function apiAuth(url,body){
+  const opt={method:'POST',headers:{'Content-Type':'application/json'}};
+  if(body)opt.body=JSON.stringify(body);
+  const r=await fetch(url,opt);
+  return r.json();
+}
+
+let authMode='login';
+function showAuth(){
+  if(currentUser){updateUserBtn();return}
+  $('authModal').classList.add('active');
+  document.body.style.overflow='hidden';
+  switchAuth('login');
+}
+function closeAuth(){
+  $('authModal').classList.remove('active');
+  document.body.style.overflow='';
+}
+function switchAuth(mode){
+  authMode=mode;
+  $('atabL').className=mode==='login'?'active':'';
+  $('atabR').className=mode==='register'?'active':'';
+  $('ap2').style.display=mode==='register'?'block':'none';
+  $('authForm').querySelector('.btn-primary').textContent=mode==='login'?'登录':'注册';
+  $('authErr').style.display='none';
+  $('au').value='';
+  $('ap').value='';
+  $('ap2').value='';
+}
+async function doAuth(){
+  const u=$('au').value.trim(),p=$('ap').value,p2=$('ap2').value;
+  const errEl=$('authErr');
+  if(!u||!p){errEl.textContent='请填写完整';errEl.style.display='block';return}
+  if(authMode==='register'&&p!==p2){errEl.textContent='两次密码不一致';errEl.style.display='block';return}
+  
+  const endpoint=authMode==='login'?'/api/auth/login':'/api/auth/register';
+  try{
+    const d=await apiAuth(endpoint,{username:u,password:p});
+    if(d.error){errEl.textContent=d.error;errEl.style.display='block';return}
+    if(d.token){
+      localStorage.setItem(TOKEN_KEY,d.token);
+      currentUser=d.user;
+      updateUserBtn();
+      closeAuth();
+    }
+  }catch(e){errEl.textContent='网络错误';errEl.style.display='block'}
+}
+/* ========== 用户系统结束 ========== */
 async function showSuggestions(){const q=document.getElementById('s').value.trim();if(q.length>1){filterSuggestions();return}try{const d=await api('/api/suggestions');renderSuggestions(d.data)}catch{}}
 async function filterSuggestions(){clearTimeout(sugTimer);sugTimer=setTimeout(async()=>{const q=document.getElementById('s').value.trim();if(!q){showSuggestions();return}if(q.length<2){$('sd').style.display='none';return}try{const d=await api('/api/suggestions?q='+encodeURIComponent(q));renderFiltered(d.data)}catch{}},300)}
 function renderSuggestions(d){if(!d){$('sd').style.display='none';return}$('sd').style.display='block';$('sd').innerHTML=(d.hot?.length?`<div class=sd-section>🔥 热门推荐</div>${d.hot.map(m=>sdItem(m)).join('')}`:'')+(d.fresh?.length?`<div class=sd-section>🆕 最新入库</div>${d.fresh.map(m=>sdItem(m)).join('')}`:'')||'<div style=padding:12px;text-align:center;color:var(--text-dim)>暂无推荐</div>'}
@@ -11,7 +89,7 @@ function sdItem(m){const t=(m.title_romaji||'').replace(/'/g,'\\u0027');return`<
 function searchSuggest(t){document.getElementById('s').value=t;$('sd').style.display='none';doSearch()}
 function navigate(p){document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));const m={'home':'ph','browse':'pb','collections':'pc','stats':'ps'};$(m[p]||'ph').classList.add('active');st.page=p;window.scrollTo({top:0});if(p==='home')loadHome();if(p==='browse')loadBrowse();if(p==='collections')loadCollections();if(p==='stats')loadStats();}
 function doSearch(){navigate('browse');st.bp=1;loadBrowse();}
-async function loadHome(){try{const s=await api('/api/stats'),r=await api('/api/recent');$('hs').innerHTML=`<span>📚${(s.totalManga||0).toLocaleString()}部</span><span>❤️${s.totalCollected||0}部已收藏</span>`;renderGrid(r.data||[],'rg')}catch{$('hs').innerHTML='<span>⏳加载中</span>'}}
+async function loadHome(){try{const s=await api('/api/stats'),r=await api('/api/recent');$('hs').innerHTML=`<span>📚${(s.totalManga||0).toLocaleString()}部</span><span>❤️${s.totalCollected||0}部已收藏</span><span>👤${s.totalUsers||0}位用户</span>`;renderGrid(r.data||[],'rg')}catch{$('hs').innerHTML='<span>⏳加载中</span>'}}
 async function loadBrowse(){const g=$('bg');g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">⏳</div>';const s=$('ss').value,f=$('gf').value,f2=$('ff').value,r=$('rf').value,q=document.getElementById('s').value.trim();let u=`/api/manga?page=${st.bp}&limit=30&sort=${s}`;if(q)u+=`&q=${encodeURIComponent(q)}`;if(f)u+=`&genre=${encodeURIComponent(f)}`;if(f2)u+=`&format=${f2}`;if(r)u+=`&region=${r}`;try{const d=await api(u);renderGrid(d.data,'bg');renderPagination(d,'bp',p=>{st.bp=p;loadBrowse()})}catch{g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">❌</div>'}try{const gs=await api('/api/genres'),sel=$('gf');if(sel.options.length<=1)gs.forEach(g=>{const o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o)})}catch{}try{const rs=await api('/api/regions'),sel=$('rf');if(sel.options.length<=1)rs.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.label+' ('+r.count+')';sel.appendChild(o)})}catch{}}
 async function loadCollections(){const l=$('cl'),p=$('cp');l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">⏳</div>';const s=$('cs').value;let u=`/api/my-collections?page=${st.cp}&limit=30`;if(s)u+=`&status=${s}`;try{const d=await api(u);if(!d.data?.length){l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">还没有收藏<br><br><button class="btn btn-primary" onclick=navigate(\'browse\')>去浏览</button></div>';p.innerHTML='';return}const sm={reading:'📖在看',completed:'✅看完',plan_to_read:'📌想看',on_hold:'⏸️搁置',dropped:'❌弃番'};l.innerHTML=d.data.map(i=>`<div class="collection-item" style="border-left:3px solid ${i.status==='reading'?'#4fc3f7':i.status==='completed'?'#81c784':i.status==='plan_to_read'?'#ffb74d':'#888'}">
 <img class="mini-cover" src="${i.cover_url||''}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%23222%22 width=%22100%22 height=%22140%22/><text x=%2250%22 y=%2270%22 fill=%22%23666%22 font-size=%2230%22 text-anchor=%22middle%22>📚</text></svg>'">

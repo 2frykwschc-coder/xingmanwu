@@ -29,13 +29,15 @@ export async function onRequest(context) {
 
     // -- /api/stats --
     if (m === 'GET' && path === 'stats') {
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         db.prepare('SELECT COUNT(*) c FROM manga').all(),
         db.prepare('SELECT COUNT(*) c FROM collections').all(),
+        db.prepare('SELECT COUNT(*) c FROM users').all(),
       ]);
       return j({
         totalManga: r1.results[0]?.c || 0,
         totalCollected: r2.results[0]?.c || 0,
+        totalUsers: r3.results[0]?.c || 0,
         statusCounts: [],
         topGenres: [],
       });
@@ -729,12 +731,100 @@ export async function onRequest(context) {
       });
     }
 
+    // ============ 用户系统 ============
+
+    // 自动建表
+    if (!_tablesChecked) {
+      try {
+        await db.prepare('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TEXT DEFAULT (datetime("now")), last_login TEXT)').run();
+        await db.prepare('CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime("now")), FOREIGN KEY(user_id) REFERENCES users(id))').run();
+      } catch(e) {}
+      _tablesChecked = true;
+    }
+
+    // -- POST /api/auth/register --
+    if (m === 'POST' && path === 'auth/register') {
+      const body = await request.json();
+      const { username, password } = body;
+      if (!username || !password) return j({ error: '需要用户名和密码' }, 400);
+      if (username.length < 2 || username.length > 20) return j({ error: '用户名长度 2-20' }, 400);
+      if (password.length < 4) return j({ error: '密码至少 4 位' }, 400);
+
+      // 检查重复
+      const existing = await db.prepare('SELECT id FROM users WHERE username=?').bind(username).all();
+      if (existing.results.length) return j({ error: '用户名已存在' }, 409);
+
+      // 密码哈希 (SHA-256 + salt)
+      const salt = crypto.randomUUID().slice(0, 8);
+      const enc = new TextEncoder();
+      const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode(password + salt));
+      const hash = btoa(String.fromCharCode(...new Uint8Array(hashBuf)));
+
+      await db.prepare('INSERT INTO users(username,password_hash,salt) VALUES(?,?,?)').bind(username, hash, salt).run();
+
+      // 生成 token
+      const token = crypto.randomUUID();
+      await db.prepare('INSERT INTO sessions(token,user_id) VALUES(?,?)').bind(token, db.lastRowId || 0).run();
+
+      // 修正：查一下刚插入的 user id
+      const userRow = await db.prepare('SELECT id FROM users WHERE username=?').bind(username).all();
+      const userId = userRow.results[0]?.id;
+      if (userId) {
+        await db.prepare('DELETE FROM sessions WHERE user_id=? AND token!=?').bind(userId, token).run();
+        await db.prepare('INSERT OR REPLACE INTO sessions(token,user_id) VALUES(?,?)').bind(token, userId).run();
+      }
+
+      await db.prepare('UPDATE users SET last_login=datetime("now") WHERE id=?').bind(userId).run();
+
+      return j({ ok: true, token, user: { id: userId, username } });
+    }
+
+    // -- POST /api/auth/login --
+    if (m === 'POST' && path === 'auth/login') {
+      const body = await request.json();
+      const { username, password } = body;
+      if (!username || !password) return j({ error: '需要用户名和密码' }, 400);
+
+      const userRow = await db.prepare('SELECT id,username,password_hash,salt FROM users WHERE username=?').bind(username).all();
+      if (!userRow.results.length) return j({ error: '用户名或密码错误' }, 401);
+
+      const user = userRow.results[0];
+      const enc = new TextEncoder();
+      const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode(password + user.salt));
+      const hash = btoa(String.fromCharCode(...new Uint8Array(hashBuf)));
+
+      if (hash !== user.password_hash) return j({ error: '用户名或密码错误' }, 401);
+
+      // 生成新 token
+      const token = crypto.randomUUID();
+      await db.prepare('DELETE FROM sessions WHERE user_id=?').bind(user.id).run();
+      await db.prepare('INSERT INTO sessions(token,user_id) VALUES(?,?)').bind(token, user.id).run();
+      await db.prepare('UPDATE users SET last_login=datetime("now") WHERE id=?').bind(user.id).run();
+
+      return j({ ok: true, token, user: { id: user.id, username: user.username } });
+    }
+
+    // -- GET /api/auth/me --
+    if (m === 'GET' && path === 'auth/me') {
+      const auth = request.headers.get('Authorization') || '';
+      const token = auth.replace('Bearer ', '').trim();
+      if (!token) return j({ user: null });
+
+      const sessionRow = await db.prepare('SELECT s.user_id,u.username,u.created_at,u.last_login FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?').bind(token).all();
+      if (!sessionRow.results.length) return j({ user: null });
+
+      const s = sessionRow.results[0];
+      return j({ user: { id: s.user_id, username: s.username, createdAt: s.created_at, lastLogin: s.last_login } });
+    }
+
     // -- 兜底 --
     return j({ error: 'not found' }, 404);
   } catch (e) {
     return j({ error: e.message }, 500);
   }
 }
+
+let _tablesChecked = false;
 
 // ---- MangaDex 标题匹配评分 ----
 function scoreDexMatch(candidate, title) {
