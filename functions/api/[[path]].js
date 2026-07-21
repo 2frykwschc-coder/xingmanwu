@@ -734,13 +734,10 @@ export async function onRequest(context) {
     // ============ 用户系统 ============
 
     // 自动建表
-    if (!_tablesChecked) {
-      try {
-        await db.prepare('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TEXT DEFAULT (datetime("now")), last_login TEXT)').run();
-        await db.prepare('CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime("now")), FOREIGN KEY(user_id) REFERENCES users(id))').run();
-      } catch(e) {}
-      _tablesChecked = true;
-    }
+    try {
+      await db.prepare('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, salt TEXT NOT NULL, created_at TEXT DEFAULT (datetime("now")), last_login TEXT)').run();
+      await db.prepare('CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime("now")), FOREIGN KEY(user_id) REFERENCES users(id))').run();
+    } catch(e) {}
 
     // -- POST /api/auth/register --
     if (m === 'POST' && path === 'auth/register') {
@@ -823,8 +820,6 @@ export async function onRequest(context) {
     return j({ error: e.message }, 500);
   }
 }
-
-let _tablesChecked = false;
 
 // ---- MangaDex 标题匹配评分 ----
 function scoreDexMatch(candidate, title) {
