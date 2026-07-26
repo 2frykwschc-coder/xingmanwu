@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta http-equiv=Cache-Control content="no-cache, no-store, must-revalidate"><meta http-equiv=Pragma content=no-cache><title>星漫屋 ✨</title><link rel=stylesheet href=/css/style.css?v=21><link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta http-equiv=Cache-Control content="no-cache, no-store, must-revalidate"><meta http-equiv=Pragma content=no-cache><title>星漫屋 ✨</title><meta name=apple-mobile-web-app-capable content=yes><meta name=apple-mobile-web-app-status-bar-style content=black-translucent><meta name=apple-mobile-web-app-title content=星漫屋><meta name=theme-color content=#16213e><link rel=manifest href=/manifest.json><link rel=stylesheet href=/css/style.css?v=21><link rel=icon href=/icons/icon_192.png sizes=192x192><link rel=apple-touch-icon href=/icons/icon_180.png>
 <div id=app>
 <header class=header><div class=header-inner><a href=# class=logo onclick=navigate('home')>✨ 星漫屋</a>
 <div class=search-box style=position:relative><input id=s placeholder=搜索漫画... autocomplete=off onkeydown="if(event.key==='Enter')doSearch()" onfocus=showSuggestions() oninput=filterSuggestions() onblur="setTimeout(()=>{$('sd').style.display='none'},200)"><button onclick=doSearch()>🔍</button><div id=sd class=search-dropdown style=display:none></div></div>
@@ -26,4 +26,5 @@
 <div id=reader class=reader><div class=reader-inner><div id=rm class=reader-menu></div><div id=rc class=reader-chapters></div><div id=rp class=reader-pages></div></div></div>
 </main></div>
 <script src=/js/app.js?v=21></script>
-// trigger rebuild
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js')</script>
+<!-- trigger rebuild -->

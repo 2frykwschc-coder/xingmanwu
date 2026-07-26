@@ -14,3 +14,12 @@ data/crawl_mk.log
 data/mapping_state.json
 0
 scripts/
+
+# Capacitor iOS build
+ios/
+
+# Node modules
+node_modules/
+
+# macOS
+.DS_Store

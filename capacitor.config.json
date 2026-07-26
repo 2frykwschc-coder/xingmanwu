@@ -1,0 +1,11 @@
+{
+  "appId": "com.xingmanwu.app",
+  "appName": "星漫屋",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "preferredContentMode": "mobile"
+  }
+}
