@@ -19,7 +19,7 @@ async function apiWithToken(url,token){
 // 页面加载时恢复登录
 (async function initAuth(){
   const t=localStorage.getItem(TOKEN_KEY);
-  if(t){try{const d=await apiWithToken('/api/auth/me',t);if(d&&d.user){currentUser=d.user;updateUserBtn()}}catch{}}
+  if(t){try{const d=await apiWithToken('/api/auth/me',t);if(d&&d.user){currentUser=d.user;updateUserBtn();refreshVipBadge()}}catch{}}
 })();
 
 function updateUserBtn(){
@@ -95,7 +95,7 @@ function renderSuggestions(d){if(!d){$('sd').style.display='none';return}$('sd')
 function renderFiltered(list){if(!list?.length){$('sd').style.display='none';return}$('sd').style.display='block';$('sd').innerHTML=`<div class=sd-section>🔍 搜索结果</div>${list.map(m=>sdItem(m)).join('')}`}
 function sdItem(m){const t=(m.title_romaji||'').replace(/'/g,'\\u0027');return`<div class=sd-item onclick="searchSuggest('${t}')"><img src="${m.cover_url||''}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 38%22><rect fill=%22%23222%22 width=%2228%22 height=%2238%22/></svg>'" loading=lazy><span class=sd-title>${m.title_romaji||'未知'}</span>${m.score?`<span class=sd-score>⭐${m.score.toFixed(1)}</span>`:''}</div>`}
 function searchSuggest(t){document.getElementById('s').value=t;$('sd').style.display='none';doSearch()}
-function navigate(p){document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));const m={'home':'ph','browse':'pb','collections':'pc','stats':'ps'};$(m[p]||'ph').classList.add('active');st.page=p;window.scrollTo({top:0});if(p==='home')loadHome();if(p==='browse')loadBrowse();if(p==='collections')loadCollections();if(p==='stats')loadStats();}
+function navigate(p){document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));const m={'home':'ph','browse':'pb','collections':'pc','stats':'ps','vip':'pv'};$(m[p]||'ph').classList.add('active');st.page=p;window.scrollTo({top:0});if(p==='home')loadHome();if(p==='browse')loadBrowse();if(p==='collections')loadCollections();if(p==='stats')loadStats();if(p==='vip')loadVip();}
 function doSearch(){navigate('browse');st.bp=1;loadBrowse();}
 async function loadHome(){try{const s=await api('/api/stats'),r=await api('/api/recent');$('hs').innerHTML=`<span>📚${(s.totalManga||0).toLocaleString()}部</span><span>❤️${s.totalCollected||0}部已收藏</span>`;renderGrid(r.data||[],'rg')}catch{$('hs').innerHTML='<span>⏳加载中</span>'}}
 async function loadBrowse(){const g=$('bg');g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">⏳</div>';const s=$('ss').value,f=$('gf').value,f2=$('ff').value,r=$('rf').value,q=document.getElementById('s').value.trim();let u=`/api/manga?page=${st.bp}&limit=30&sort=${s}`;if(q)u+=`&q=${encodeURIComponent(q)}`;if(f)u+=`&genre=${encodeURIComponent(f)}`;if(f2)u+=`&format=${f2}`;if(r)u+=`&region=${r}`;try{const d=await api(u);renderGrid(d.data,'bg');renderPagination(d,'bp',p=>{st.bp=p;loadBrowse()})}catch{g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">❌</div>'}try{const gs=await api('/api/genres'),sel=$('gf');if(sel.options.length<=1)gs.forEach(g=>{const o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o)})}catch{}try{const rs=await api('/api/regions'),sel=$('rf');if(sel.options.length<=1)rs.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.label+' ('+r.count+')';sel.appendChild(o)})}catch{}}
@@ -280,7 +280,7 @@ function backToChapters(){
   rd={cid:null,hash:'',baseUrl:'',pages:[],currentPage:0,chapterList:[],currentCh:0,mode:'single'};
 }
 function closeReader(){$('reader').classList.remove('active');document.body.style.overflow='';$('rc').innerHTML='';$('rp').innerHTML='';$('rm').innerHTML='';$('modal').classList.remove('active')}
-function closeModal(){$('modal').classList.remove('active');$('reader').classList.remove('active');document.body.style.overflow=''}
+function closeModal(){clearInterval(payTimer);payTimer=null;payOrder=null;$('modal').classList.remove('active');$('reader').classList.remove('active');document.body.style.overflow=''}
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();closeReader()}
   if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();if($('reader').classList.contains('active'))nextPage()}
@@ -291,4 +291,123 @@ document.addEventListener('keydown',e=>{
 async function add(id,s){await post('/api/collection',{manga_id:id,status:s});if(st.page==='collections')loadCollections();view(id)}
 async function col(id,s){await post('/api/collection',{manga_id:id,status:s});if(st.page==='collections')loadCollections()}
 async function rm(id){if(!confirm('确定移除？'))return;await del('/api/collection/'+id);closeModal();if(st.page==='collections')loadCollections()}
+/* ========== VIP 会员 ========== */
+let vipInfo=null,payTimer=null,payOrder=null;
+
+async function apiVip(url,opt={}){
+  const t=localStorage.getItem(TOKEN_KEY);
+  opt.headers=Object.assign({'Content-Type':'application/json'},opt.headers||{});
+  if(t)opt.headers['Authorization']='Bearer '+t;
+  return (await fetch(url,opt)).json();
+}
+
+// 顶部皇冠标识
+async function refreshVipBadge(){
+  try{
+    const d=await apiVip('/api/vip/me');
+    vipInfo=d;
+    if(currentUser&&d.vip?.active){
+      const btn=$('userBtn');
+      if(!btn.textContent.includes('👑'))btn.textContent='👑 '+currentUser.username;
+    }else if(currentUser){
+      updateUserBtn();
+    }
+  }catch{}
+}
+
+async function loadVip(){
+  const st=$('vipStatus'),pl=$('vipPlans');
+  st.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim)">⏳</div>';
+  try{
+    const [d,plansData]=await Promise.all([apiVip('/api/vip/me'),apiVip('/api/vip/plans')]);
+    vipInfo=Object.assign({},d,{plans:plansData.plans||[],channels:plansData.channels||{}});
+    let h='';
+    if(!currentUser){
+      h='<div class=vip-status-card><div>登录后即可开通 VIP 会员</div><button class="btn btn-primary" style="margin-top:12px" onclick="showAuth()">登录 / 注册</button></div>';
+    }else if(d.vip?.active){
+      h='<div class="vip-status-card vip-active">👑 VIP 生效中 · 到期 <b>'+d.vip.until.slice(0,10)+'</b> · 剩余 <b>'+d.vip.daysLeft+'</b> 天</div>';
+    }else{
+      h='<div class=vip-status-card>当前不是 VIP，开通后解锁专属权益 ✨</div>';
+    }
+    st.innerHTML=h;
+    const c=d.channels||{};
+    pl.innerHTML='<div class=vip-plans>'+d.plans.map(p=>{
+      const tag=p.id==='yearly'?'<span class=vip-tag>最划算</span>':p.id==='monthly'?'<span class=vip-tag>热门</span>':'';
+      return '<div class=vip-card onclick="openPay(\''+p.id+'\')">'+
+        '<div class=vip-card-name>'+p.name+tag+'</div>'+
+        '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
+        '<div class=vip-card-btn>立即开通</div></div>';
+    }).join('')+'</div>';
+    if(!c.wechat&&!c.alipay){
+      pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:16px">⚠️ 支付通道配置中，暂时无法购买</div>';
+    }
+  }catch{
+    st.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim)">❌ 加载失败</div>';
+  }
+}
+
+// 选择套餐 → 选择支付方式
+function openPay(planId){
+  if(!currentUser){showAuth();return}
+  const p=(vipInfo?.plans||[]).find(x=>x.id===planId);
+  if(!p)return;
+  const c=vipInfo?.channels||{};
+  const m=$('modal'),mc=$('mc');
+  m.classList.add('active');document.body.style.overflow='hidden';
+  mc.innerHTML='<div class=modal-topbar><button class="btn btn-secondary btn-sm" onclick="closeModal()">← 返回</button><div class=modal-top-title>开通'+p.name+'</div></div>'+
+  '<button class=modal-close onclick=closeModal()>✕</button>'+
+  '<div style="padding:24px;text-align:center">'+
+    '<div style="font-size:20px;font-weight:700">'+p.name+' ¥'+p.price+'</div>'+
+    '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 20px">选择支付方式</div>'+
+    '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">'+
+      '<button class="btn pay-channel'+(c.wechat?'':' disabled')+'"'+(c.wechat?'':' disabled')+' onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信支付</button>'+
+      '<button class="btn pay-channel'+(c.alipay?'':' disabled')+'"'+(c.alipay?'':' disabled')+' onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝</button>'+
+    '</div>'+
+    (!c.wechat&&!c.alipay?'<div style="margin-top:16px;color:var(--text-dim);font-size:13px">支付通道尚未开通</div>':'')+
+  '</div>';
+}
+
+// 下单 → 显示动态二维码 → 轮询
+async function startPay(planId,channel){
+  const mc=$('mc');
+  mc.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim)">⏳ 正在生成订单...</div>';
+  try{
+    const d=await apiVip('/api/vip/order',{method:'POST',body:JSON.stringify({plan:planId,channel})});
+    if(d.error){mc.innerHTML='<div style="padding:40px;text-align:center">❌ '+d.error+'<br><br><button class="btn btn-secondary" onclick="closeModal()">返回</button></div>';return}
+    payOrder=d;
+    mc.innerHTML='<div style="padding:24px;text-align:center">'+
+      '<div style="font-size:18px;font-weight:700">¥'+(d.amount/100).toFixed(2)+'</div>'+
+      '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 16px">'+(channel==='wechat'?'请使用微信扫码支付':'请使用支付宝扫码支付')+'</div>'+
+      '<div id=payQr style="display:inline-block;background:#fff;padding:12px;border-radius:12px"></div>'+
+      '<div id=payStatus style="margin-top:14px;font-size:14px;color:var(--text-dim)">⏳ 等待扫码支付...</div>'+
+      '<div style="margin-top:8px;font-size:12px;color:var(--text-dim)">订单号 '+d.order_no+' · 二维码 2 小时内有效</div>'+
+      '<div style="margin-top:16px"><button class="btn btn-secondary btn-sm" onclick="closeModal()">取消</button></div>'+
+    '</div>';
+    new QRCode($('payQr'),{text:d.qr_content,width:210,height:210,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+    clearInterval(payTimer);
+    payTimer=setInterval(pollPay,2500);
+  }catch{
+    mc.innerHTML='<div style="padding:40px;text-align:center">❌ 网络错误<br><br><button class="btn btn-secondary" onclick="closeModal()">返回</button></div>';
+  }
+}
+
+async function pollPay(){
+  if(!payOrder)return;
+  try{
+    const d=await apiVip('/api/vip/order/'+payOrder.order_no);
+    if(d.status==='paid'){
+      clearInterval(payTimer);payTimer=null;
+      const ps=$('payStatus');
+      if(ps)ps.innerHTML='<div style="color:#81c784;font-weight:700;font-size:16px">🎉 支付成功！</div>';
+      refreshVipBadge();
+      setTimeout(()=>{closeModal();loadVip()},1500);
+    }else if(d.status==='expired'||d.status==='closed'){
+      clearInterval(payTimer);payTimer=null;
+      const ps=$('payStatus');
+      if(ps)ps.innerHTML='<div style="color:#e57373">⏰ 订单已过期，请重新下单</div>';
+    }
+  }catch{}
+}
+
+// 关闭弹窗时停止轮询(已合并进 closeModal)
 loadHome();
