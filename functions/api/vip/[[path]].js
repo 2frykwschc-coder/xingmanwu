@@ -19,8 +19,8 @@
 const PLANS = {
   weekly:    { name: '周VIP', amount: 800,   days: 7,   desc: '星漫屋·周VIP会员' },
   monthly:   { name: '月VIP', amount: 2800,  days: 30,  desc: '星漫屋·月VIP会员' },
-  quarterly: { name: '季VIP', amount: 6800,  days: 90,  desc: '星漫屋·季VIP会员' },
-  yearly:    { name: '年VIP', amount: 16800, days: 365, desc: '星漫屋·年VIP会员' },
+  quarterly: { name: '季VIP', amount: 8800,  days: 90,  desc: '星漫屋·季VIP会员' },
+  yearly:    { name: '年VIP', amount: 18800, days: 365, desc: '星漫屋·年VIP会员' },
 };
 
 const WX_API = 'https://api.mch.weixin.qq.com';
