@@ -435,13 +435,27 @@ async function startPay(planId,channel){
         '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">'+(channel==='wechat'?'微信':'支付宝')+' · 订单 '+esc(d.order_no)+'</div>'+
         '<div style="display:inline-block;background:#fff;padding:14px;border-radius:12px;border:1px solid #eee"><div id=qrBox style="width:230px;height:230px"></div></div>'+
         '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.9">① 打开'+(channel==='wechat'?'微信':'支付宝')+'「扫一扫」，扫上方二维码<br>② 支付成功后<b style="color:#81c784">自动开通 VIP</b>，无需任何操作<br>③ 已付款但还没开通？到账通知一般几秒~1分钟，本页会自动刷新</div>'+
+        (d.pay_url&&d.pay_url!==d.qrcode?'<div style="margin-top:6px"><a href="'+esc(d.pay_url)+'" target=_blank rel=noopener style="color:#7fb2ff;font-size:13px">二维码打不开？点此跳转收银台支付 ↗</a></div>':'')+
         '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
         '<div style="margin-top:14px"><button class="btn btn-secondary" onclick="closeModal()">关闭</button></div>'+
       '</div>';
-      try{
-        new QRCode(document.getElementById('qrBox'),{text:d.pay_url,width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
-      }catch(e){
-        $('qrBox').innerHTML='<div style="font-size:12px;color:#a00;padding:8px">二维码生成失败</div><div style="font-size:11px;color:#333;word-break:break-all;padding:0 8px 8px">'+esc(d.pay_url)+'</div>';
+      // 有平台二维码图片直接用; 没有则用支付链接本地生成二维码; 再不行显示原文
+      var qrBox=$('qrBox');
+      var qrOk=false;
+      if(d.qrcode){
+        var im=document.createElement('img');
+        im.src=d.qrcode;im.style.cssText='width:230px;height:230px;border-radius:4px;display:block';
+        im.onerror=function(){renderPayQr(d.pay_url||d.qrcode)};
+        qrBox.appendChild(im);qrOk=true;
+      }
+      if(!qrOk)renderPayQr(d.pay_url||d.qrcode);
+      function renderPayQr(url){
+        if(!url)return;
+        try{
+          new QRCode(qrBox,{text:url,width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
+        }catch(e2){
+          qrBox.innerHTML='<div style="font-size:12px;color:#a00;padding:8px">二维码生成失败</div><div style="font-size:11px;color:#333;word-break:break-all;padding:0 8px 8px">'+esc(url)+'</div>';
+        }
       }
     }else{
       // 兑底: 固定码人工核对模式(未启用码支付时)

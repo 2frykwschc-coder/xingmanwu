@@ -180,12 +180,13 @@ export async function onRequest(context) {
   if (m === 'OPTIONS') return new Response(null, { headers: cors });
   const j = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-  // ═══ 码支付签名/下单/验签 ═══
-  // 签名规则(易支付/码支付通用): 除 sign/sign_type 外全部参数按参数名 ASCII 升序,
-  // 以 k=v&k2=v2 拼接, 末尾追加 &key=商户密钥, 再取 MD5(小写)。以你平台文档为准, 不对就调这里。
+  // ═══ 码支付签名/下单/验签 (对接 https://pay.zhiyanchuang.com 晓风码支付) ═══
+  // 签名规则(该平台官方文档): 除 sign/sign_type 外全部参数按参数名 ASCII 升序,
+  // 以 k=v&k2=v2 拼接(值为原文、不 URL 编码、空值剔除), 末尾【直接拼接商户密钥】(无 &key= 前缀),
+  // 再取 MD5 小写。不要用 http_build_query 生成待签串。
   function mpaySign(params) {
     const ks = Object.keys(params).filter(k => k !== 'sign' && k !== 'sign_type' && params[k] !== '' && params[k] != null).sort();
-    return md5Hex(ks.map(k => k + '=' + params[k]).join('&') + '&key=' + MPAY.key).toLowerCase();
+    return md5Hex(ks.map(k => k + '=' + params[k]).join('&') + MPAY.key).toLowerCase();
   }
   function mpayVerify(params) {
     if (!params || !params.sign) return false;
@@ -214,8 +215,8 @@ export async function onRequest(context) {
       const txt = await r.text();
       try {
         const d = JSON.parse(txt);
-        if (d && String(d.code) === '1' && (d.pay_url || d.qrcode || d.url)) {
-          return { ok: true, pay_url: d.pay_url || d.qrcode || d.url, trade_no: d.trade_no || '' };
+        if (d && String(d.code) === '1' && (d.payurl || d.qrcode)) {
+          return { ok: true, pay_url: d.payurl || '', qrcode: d.qrcode || '', urlscheme: d.urlscheme || '', trade_no: d.trade_no || '' };
         }
         return { ok: false, reason: '平台返回: ' + String(d.msg || txt).slice(0, 200) };
       } catch (e) {
@@ -281,7 +282,7 @@ export async function onRequest(context) {
         if (!mp.ok) return j({ ok: false, error: '支付平台下单失败: ' + mp.reason }, 502);
         return j({
           ok: true, order_no: orderNo, amount: plan.amount, plan: body.plan, channel: body.channel,
-          mpay: true, pay_url: mp.pay_url, trade_no: mp.trade_no,
+          mpay: true, pay_url: mp.pay_url, qrcode: mp.qrcode, urlscheme: mp.urlscheme, trade_no: mp.trade_no,
         });
       }
 
@@ -380,8 +381,8 @@ export async function onRequest(context) {
       try { new URLSearchParams(raw).forEach((v, k) => { params[k] = v; }); } catch (e) {}
       if (!Object.keys(params).length && raw) { try { Object.assign(params, JSON.parse(raw)); } catch (e) {} }
       const okSign = mpayVerify(params);
-      const status = params.trade_status || 'TRADE_SUCCESS';
-      if (!okSign || String(status) !== 'TRADE_SUCCESS') return new Response('fail');
+      const successStatus = String(params.trade_status || '') === 'TRADE_SUCCESS' || String(params.status || '') === 'paid';
+      if (!okSign || !successStatus) return new Response('fail');
       const orderNo = String(params.out_trade_no || '');
       const money = String(params.money || '');
       const order = await db.prepare('SELECT * FROM vip_orders WHERE order_no=?').bind(orderNo).first();
