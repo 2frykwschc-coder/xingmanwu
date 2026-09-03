@@ -28,6 +28,52 @@ const ADMIN_USERS = new Set([]);
 
 const QR_IMAGES = { wechat: '/pay/wechat.jpg', alipay: '/pay/alipay.jpg' };
 
+// ═══ 码支付 / 易支付 聚合支付配置 ══════════════════════════════════════════
+// enabled=true 后: 下单即向平台提交订单 → 返回「动态二维码」给用户扫;
+// 用户付款成功后平台 POST 异步通知本域名 /api/vip/pay/notify, 验签+金额校验通过才自动开通 VIP。
+// 参数在平台后台「商户信息/对接文档」里: pid=商户ID, key=商户密钥, gateway=下单接口地址。
+const MPAY = {
+  enabled: false,          // ← 配置好下面参数后改成 true 即启用; false = 维持固定码人工核对
+  gateway: '',             // 下单网关, 例: 'https://你的平台域名/submit.php'
+  pid: '',                 // 商户ID
+  key: '',                 // 商户密钥
+  typeMap: { wechat: 'wxpay', alipay: 'alipay' }, // 渠道代码, 以平台文档为准
+};
+
+// ── MD5 纯 JS 实现 (Workers 无内置 MD5, 公开领域算法) ──
+function md5Hex(msg){
+  const K=[],s=[],si=[7,12,17,22,5,9,14,20,4,11,16,23,6,10,15,21];
+  for(let i=0;i<64;i++){K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296)>>>0;s[i]=si[((i/16)|0)*4+(i%4)]}
+  const F=(x,y,z)=>(x&y)|(~x&z), G=(x,y,z)=>(x&z)|(y&~z), H=(x,y,z)=>x^y^z, I=(x,y,z)=>y^(x|~z);
+  const rol=(x,c)=>((x<<c)|(x>>>(32-c)))>>>0;
+  const data=new TextEncoder().encode(msg);
+  const bitLen=data.length*8;
+  const w=[...data,0x80];
+  while(w.length%64!==56)w.push(0);
+  const low=bitLen>>>0, high=Math.floor(bitLen/4294967296);
+  for(let i=0;i<4;i++)w.push((low>>>(8*i))&0xff);
+  for(let i=0;i<4;i++)w.push((high>>>(8*i))&0xff);
+  let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+  for(let off=0;off<w.length;off+=64){
+    const M=[];
+    for(let i=0;i<16;i++){M[i]=((w[off+i*4])|(w[off+i*4+1]<<8)|(w[off+i*4+2]<<16)|(w[off+i*4+3]<<24))>>>0}
+    let A=a0,B=b0,C=c0,D=d0;
+    for(let i=0;i<64;i++){
+      let f,g;
+      if(i<16){f=F(B,C,D);g=i}
+      else if(i<32){f=G(B,C,D);g=(5*i+1)%16}
+      else if(i<48){f=H(B,C,D);g=(3*i+5)%16}
+      else {f=I(B,C,D);g=(7*i)%16}
+      f=(f+A+K[i]+M[g])>>>0;
+      A=D;D=C;C=B;
+      B=(B+rol(f,s[i]))>>>0;
+    }
+    a0=(a0+A)>>>0;b0=(b0+B)>>>0;c0=(c0+C)>>>0;d0=(d0+D)>>>0;
+  }
+  const hex=n=>{let h='';for(let i=0;i<4;i++)h+=((n>>>(i*8))&0xff).toString(16).padStart(2,'0');return h};
+  return hex(a0)+hex(b0)+hex(c0)+hex(d0);
+}
+
 function genOrderNo() {
   return 'XMW' + Date.now() + Math.floor(1000 + Math.random() * 9000);
 }
@@ -134,6 +180,53 @@ export async function onRequest(context) {
   if (m === 'OPTIONS') return new Response(null, { headers: cors });
   const j = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
 
+  // ═══ 码支付签名/下单/验签 ═══
+  // 签名规则(易支付/码支付通用): 除 sign/sign_type 外全部参数按参数名 ASCII 升序,
+  // 以 k=v&k2=v2 拼接, 末尾追加 &key=商户密钥, 再取 MD5(小写)。以你平台文档为准, 不对就调这里。
+  function mpaySign(params) {
+    const ks = Object.keys(params).filter(k => k !== 'sign' && k !== 'sign_type' && params[k] !== '' && params[k] != null).sort();
+    return md5Hex(ks.map(k => k + '=' + params[k]).join('&') + '&key=' + MPAY.key).toLowerCase();
+  }
+  function mpayVerify(params) {
+    if (!params || !params.sign) return false;
+    return mpaySign(params) === String(params.sign).toLowerCase();
+  }
+  async function mpaySubmit(orderNo, amountFen, name, channel) {
+    try {
+      const origin = url.origin;
+      const params = {
+        pid: MPAY.pid,
+        type: MPAY.typeMap[channel] || 'alipay',
+        out_trade_no: orderNo,
+        notify_url: origin + '/api/vip/pay/notify',
+        return_url: origin + '/',
+        name: name + ' ' + orderNo,
+        money: (amountFen / 100).toFixed(2),
+        sign_type: 'MD5',
+      };
+      params.sign = mpaySign(params);
+      const body = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+      const r = await fetch(MPAY.gateway, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const txt = await r.text();
+      try {
+        const d = JSON.parse(txt);
+        if (d && String(d.code) === '1' && (d.pay_url || d.qrcode || d.url)) {
+          return { ok: true, pay_url: d.pay_url || d.qrcode || d.url, trade_no: d.trade_no || '' };
+        }
+        return { ok: false, reason: '平台返回: ' + String(d.msg || txt).slice(0, 200) };
+      } catch (e) {
+        return { ok: false, reason: '网关非JSON(可能需按文档调参): ' + txt.slice(0, 200) };
+      }
+    } catch (e) {
+      return { ok: false, reason: e.message };
+    }
+  }
+
+
   try {
     await initTables(db);
 
@@ -145,7 +238,7 @@ export async function onRequest(context) {
         })),
         channels: { wechat: true, alipay: true },
         qr: QR_IMAGES,
-        mode: 'manual', // 固定收款码, 站长核对到账后开通(防白嫖)
+        mode: MPAY.enabled ? 'auto' : 'manual', // auto=码支付自动验单; manual=固定码站长核对
       });
     }
 
@@ -181,6 +274,16 @@ export async function onRequest(context) {
       await db.prepare(
         'INSERT INTO vip_orders(order_no,user_id,plan,amount,channel,status,created_at) VALUES(?,?,?,?,?,?,?)'
       ).bind(orderNo, user.id, body.plan, plan.amount, body.channel, 'pending', new Date().toISOString()).run();
+
+      // 码支付模式: 同步向平台下单, 返回动态二维码内容
+      if (MPAY.enabled) {
+        const mp = await mpaySubmit(orderNo, plan.amount, plan.desc, body.channel);
+        if (!mp.ok) return j({ ok: false, error: '支付平台下单失败: ' + mp.reason }, 502);
+        return j({
+          ok: true, order_no: orderNo, amount: plan.amount, plan: body.plan, channel: body.channel,
+          mpay: true, pay_url: mp.pay_url, trade_no: mp.trade_no,
+        });
+      }
 
       return j({ ok: true, order_no: orderNo, amount: plan.amount, plan: body.plan, channel: body.channel });
     }
@@ -267,6 +370,27 @@ export async function onRequest(context) {
       if (!body.order_no) return j({ error: '缺少 order_no' }, 400);
       await db.prepare("UPDATE vip_orders SET status='closed' WHERE order_no=? AND status='pending'").bind(body.order_no).run();
       return j({ ok: true });
+    }
+
+    // -- POST /api/vip/pay/notify (码支付异步到账通知: 验签→金额校验→自动开通, 防白嫖) --
+    if (m === 'POST' && path === 'pay/notify') {
+      if (!MPAY.enabled) return j({ error: 'not enabled' }, 404);
+      const raw = await request.text().catch(() => '');
+      const params = {};
+      try { new URLSearchParams(raw).forEach((v, k) => { params[k] = v; }); } catch (e) {}
+      if (!Object.keys(params).length && raw) { try { Object.assign(params, JSON.parse(raw)); } catch (e) {} }
+      const okSign = mpayVerify(params);
+      const status = params.trade_status || 'TRADE_SUCCESS';
+      if (!okSign || String(status) !== 'TRADE_SUCCESS') return new Response('fail');
+      const orderNo = String(params.out_trade_no || '');
+      const money = String(params.money || '');
+      const order = await db.prepare('SELECT * FROM vip_orders WHERE order_no=?').bind(orderNo).first();
+      if (!order) return new Response('success'); // 未知单号不再重试
+      if (order.status === 'paid') return new Response('success'); // 幂等
+      if (order.status === 'closed') return new Response('success');
+      if (Math.abs(parseFloat(money) - order.amount / 100) > 0.001) return new Response('fail'); // 金额不符: 拒收并让平台重试
+      await handlePaid(db, orderNo, String(params.trade_no || ''));
+      return new Response('success'); // 平台约定: 返回 success 停止重试
     }
 
     return j({ error: 'not found' }, 404);
