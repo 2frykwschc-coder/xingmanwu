@@ -338,7 +338,7 @@ async function loadVip(){
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">💡 微信/支付宝扫码转账，站长核对到账后自动开通，一般几分钟</div>'+
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">💡 微信/支付宝扫码转账，付款后点「我已付款」立即开通，无需等待</div>'+
       '<div id=myOrdersBox></div>';
     if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
     loadMyOrders();
@@ -358,7 +358,7 @@ function openPay(planId){
   '<button class=modal-close onclick=closeModal()>✕</button>'+
   '<div style="padding:24px;text-align:center">'+
     '<div style="font-size:20px;font-weight:700">'+p.name+' ¥'+p.price+'</div>'+
-    '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">扫收款码转账对应金额，核对后自动开通</div>'+
+    '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">扫收款码转账，付款后点「我已付款」立即开通</div>'+
     '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
       '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信收款码</button>'+
       '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝收款码</button>'+
@@ -379,11 +379,11 @@ async function startPay(planId,channel){
       '<div style="font-size:18px;font-weight:700">请扫码转账 ¥'+(d.amount/100).toFixed(2)+'</div>'+
       '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">'+(channel==='wechat'?'微信收款码':'支付宝收款码')+' · 金额'+(d.amount/100).toFixed(2)+'元 · 订单 '+d.order_no+'</div>'+
       '<div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;border:1px solid #eee"><img src="'+qrImg+'" alt="收款码" style="display:block;max-height:300px;max-width:66vw;object-fit:contain"></div>'+
-      '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.8">① 用'+(channel==='wechat'?'微信':'支付宝')+'扫上方收款码，转账 <b>¥'+(d.amount/100).toFixed(2)+'</b><br>② 付款后点击下方「我已付款」<br>③ 站长核对到账后自动开通（一般几分钟）</div>'+
+      '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.8">① 用'+(channel==='wechat'?'微信':'支付宝')+'扫上方收款码，转账 <b>¥'+(d.amount/100).toFixed(2)+'</b><br>② 付款后点击下方「我已付款」<br>③ 点击后立即开通，无需等待</div>'+
       '<div style="margin-top:12px"><input id=payNoInp placeholder="交易单号（选填，方便核对）" style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;width:250px;max-width:85%;font-size:13px"></div>'+
       '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
       '<div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
-        '<button class="btn btn-primary" id=paidBtn onclick="submitPaid()">💸 我已付款，等待开通</button>'+
+        '<button class="btn btn-primary" id=paidBtn onclick="submitPaid()">💸 我已付款，立即开通</button>'+
         '<button class="btn btn-secondary" onclick="closeModal()">关闭</button></div>'+
     '</div>';
     clearInterval(payTimer);
@@ -397,15 +397,23 @@ async function submitPaid(){
   if(!payOrder)return;
   const ps=$('payStatus');
   const btn=$('paidBtn');
-  if(btn){btn.disabled=true;btn.textContent='提交中...'}
+  if(btn){btn.disabled=true;btn.textContent='开通中...'}
   try{
     const payNo=($('payNoInp')?.value||'').trim();
     const d=await apiVip('/api/vip/order/'+payOrder.order_no+'/paid',{method:'POST',body:JSON.stringify({pay_no:payNo})});
-    if(ps)ps.innerHTML=d.ok?'<div style="color:#ffb74d;font-weight:600">✅ 已提交！站长确认后自动开通，可关闭本页稍后查看</div>':'❌ '+(d.error||'提交失败');
+    if(d.ok){
+      clearInterval(payTimer);payTimer=null;
+      if(ps)ps.innerHTML='<div style="color:#81c784;font-weight:700;font-size:16px">🎉 已开通！'+(d.vip_until?'有效期至 '+d.vip_until.slice(0,10):'')+'</div>';
+      refreshVipBadge();
+      loadMyOrders();
+      setTimeout(()=>{closeModal();loadVip()},1600);
+      return;
+    }
+    if(ps)ps.innerHTML='<div style="color:#e57373">❌ '+(d.error||'开通失败，请重试')+'</div>';
   }catch{
     if(ps)ps.innerHTML='<div style="color:#e57373">❌ 网络错误，请重试</div>';
   }
-  if(btn){btn.disabled=false;btn.textContent='💸 我已付款，等待开通'}
+  if(btn){btn.disabled=false;btn.textContent='💸 我已付款，立即开通'}
 }
 
 async function pollPay(){

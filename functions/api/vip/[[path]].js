@@ -1,11 +1,10 @@
-// 星漫屋 VIP 会员 — 固定收款码 + 人工核对开通
+// 星漫屋 VIP 会员 — 固定收款码 + 点击自动开通(信任模式)
 // 路由: /api/vip/*
 //
 // 流程:
 //   用户: 选套餐 → 选微信/支付宝 → 看到对应收款码图片 + 应付金额 → 扫码转账
-//         → 填交易单号(选填) 点「我已付款」→ 等待站长核对
-//   站长: VIP 页底部「管理台」→ 看到待核对订单(含用户/套餐/金额) → 对照自己收款记录
-//         → 点「已到账，开通」→ 系统自动按套餐天数顺延 VIP
+//         → 填交易单号(选填) 点「我已付款」→ **立即自动开通**(无人工核对)
+//   站长: VIP 页底部「管理台」可事后抽查订单与实际到账是否相符
 //
 // 管理员识别: users 表 is_admin=1。系统无管理员时，第一个注册的用户自动成为管理员
 // (通常就是你本人)。也可在下方 ADMIN_USERS 里写死用户名。
@@ -189,12 +188,14 @@ export async function onRequest(context) {
       const order = await db.prepare('SELECT * FROM vip_orders WHERE order_no=?').bind(orderNo).first();
       if (!order) return j({ error: '订单不存在' }, 404);
       if (order.user_id !== user.id) return j({ error: '无权操作' }, 403);
-      if (order.status === 'paid') return j({ ok: true, already: true });
       if (order.status === 'closed') return j({ error: '订单已关闭' }, 400);
+      if (order.status === 'paid') return j({ ok: true, already: true, vip_until: order.vip_until });
       const body = await request.json().catch(() => ({}));
       const payNo = (body.pay_no || '').toString().slice(0, 80);
-      await db.prepare('UPDATE vip_orders SET platform_order=? WHERE order_no=?').bind(payNo, orderNo).run();
-      return j({ ok: true, message: '已提交，等待站长确认到账后自动开通' });
+      // 自动开通(信任模式): 点「我已付款」立即开通, 站长事后在管理台抽查收款记录
+      const r = await handlePaid(db, orderNo, payNo);
+      if (!r.ok) return j({ error: r.reason }, 400);
+      return j({ ok: true, already: false, vip_until: r.vip_until, message: '已自动开通' });
     }
 
     // -- GET /api/vip/order/:no (本人或管理员, 轮询用) --
