@@ -3,6 +3,7 @@
 
 const DEX_API = 'https://api.mangadex.org';
 const DEX_HEADERS = { 'User-Agent': 'Xingmanwu/1.0 (Cloudflare Pages)' };
+const PROBE_KEY = 'xw-probe-7f2c9a41e6b8d305c17a4f9e2d8b0c63a5e1'; // 批量探测写接口密钥(私有仓库常量)
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -255,7 +256,7 @@ export async function onRequest(context) {
         .bind(id)
         .all();
       const cm = cached.results[0];
-      if (cm) {
+      if (cm && cm.dex_id) {
         let total = cm.total_chapters || 0;
         let readable = cm.readable_chapters || 0;
         const dexId = cm.dex_id;
@@ -368,11 +369,18 @@ export async function onRequest(context) {
             hasReadable = chapterCount > 0;
           }
           try {
+            const nowIso = new Date().toISOString();
             await db
               .prepare(
-                'INSERT OR IGNORE INTO dex_mapping(manga_id,dex_id,dex_title,total_chapters,last_checked) VALUES(?,?,?,?,?)'
+                `INSERT INTO dex_mapping(manga_id,dex_id,dex_title,total_chapters,readable_chapters,last_checked)
+                 VALUES(?,?,?,?,?,?)
+                 ON CONFLICT(manga_id) DO UPDATE SET
+                   dex_id=excluded.dex_id, dex_title=excluded.dex_title,
+                   total_chapters=excluded.total_chapters,
+                   readable_chapters=CASE WHEN excluded.total_chapters>0 THEN excluded.total_chapters ELSE dex_mapping.readable_chapters END,
+                   last_checked=excluded.last_checked`
               )
-              .bind(id, best.id, finalTitle, chapterCount, new Date().toISOString())
+              .bind(id, best.id, finalTitle, chapterCount, chapterCount > 0 ? chapterCount : 0, nowIso)
               .run();
           } catch {}
           break;
@@ -738,7 +746,57 @@ export async function onRequest(context) {
       });
     }
 
-    // ============ 外部源链接 ============
+    // ============ 批量探测(有资源优先排序的队列) ============
+
+    // -- GET /api/probe/queue?limit=300 — 未探测漫画(无 dex_mapping 行), 按热度排队 --
+    if (m === 'GET' && path === 'probe/queue') {
+      const lim = Math.min(parseInt(url.searchParams.get('limit') || '200') || 200, 500);
+      const r = await db
+        .prepare(
+          `SELECT m.id,m.title_romaji,m.title_english,m.title_native,m.popularity FROM manga m
+           WHERE NOT EXISTS (SELECT 1 FROM dex_mapping d WHERE d.manga_id=m.id)
+           ORDER BY m.popularity DESC NULLS LAST LIMIT ?`
+        )
+        .bind(lim)
+        .all();
+      return j({ data: r.results });
+    }
+
+    // -- POST /api/probe/result — 探测结果写回 (X-Probe-Key 校验) --
+    if (m === 'POST' && path === 'probe/result') {
+      if ((request.headers.get('X-Probe-Key') || '') !== PROBE_KEY) return j({ error: 'forbidden' }, 403);
+      const body = await request.json().catch(() => ({}));
+      const id = parseInt(body.id);
+      if (!id) return j({ error: 'no id' }, 400);
+      const nowIso = new Date().toISOString();
+      if (body.found && body.dex_id) {
+        const total = parseInt(body.total) || 0;
+        await db
+          .prepare(
+            `INSERT INTO dex_mapping(manga_id,dex_id,dex_title,total_chapters,readable_chapters,last_checked)
+             VALUES(?,?,?,?,?,?)
+             ON CONFLICT(manga_id) DO UPDATE SET
+               dex_id=excluded.dex_id, dex_title=excluded.dex_title,
+               total_chapters=excluded.total_chapters,
+               readable_chapters=CASE WHEN excluded.total_chapters>0 THEN excluded.total_chapters ELSE dex_mapping.readable_chapters END,
+               last_checked=excluded.last_checked`
+          )
+          .bind(id, String(body.dex_id), String(body.dex_title || '').slice(0, 300), total, total > 0 ? total : 0, nowIso)
+          .run();
+      } else {
+        // 确认无资源: 写入空映射(dex_id=NULL)使其沉底且不再进队列; 阅读时仍可重新搜索覆盖
+        await db
+          .prepare(
+            `INSERT INTO dex_mapping(manga_id,dex_id,dex_title,total_chapters,readable_chapters,last_checked)
+             VALUES(?,NULL,'',0,0,?)
+             ON CONFLICT(manga_id) DO UPDATE SET
+               dex_id=NULL, dex_title='', total_chapters=0, readable_chapters=0, last_checked=excluded.last_checked`
+          )
+          .bind(id, nowIso)
+          .run();
+      }
+      return j({ ok: true });
+    }
 
     // -- GET /api/ext/search/:id --
     if (m === 'GET' && parts[0] === 'ext' && parts[1] === 'search' && parts[2]) {
