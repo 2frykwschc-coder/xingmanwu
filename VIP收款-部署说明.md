@@ -1,109 +1,63 @@
-# 星漫屋 VIP 会员收款 — 部署说明
+# 星漫屋 VIP 收款 — 部署说明（固定收款码版）
 
-周VIP ¥8 / 月VIP ¥28 / 季VIP ¥88 / 年VIP ¥188
-动态二维码：微信支付 Native + 支付宝当面付，支付成功后自动开通/续费 VIP。
+套餐：周VIP ¥8 / 月VIP ¥28 / 季VIP ¥88 / 年VIP ¥188
+模式：**微信/支付宝固定收款码 + 人工核对开通**（无需商户号、营业执照，用自己的个人收款码即可起步）
+
+## 收款流程
+
+```
+用户：VIP页 → 选套餐 → 选微信/支付宝 → 看到收款码图片 + 应付金额
+    → 扫码转账 → 填交易单号(选填) → 点「我已付款」
+站长：VIP页底部「🛠 管理台」→ 看到待核对订单(用户/套餐/金额/付款单号)
+    → 打开自己微信/支付宝收款记录核对 → 点「💰 已到账，开通」
+    → 系统自动按套餐天数顺延 VIP，用户页面轮询到状态自动变「已开通」
+```
 
 ## 代码结构
 
 | 文件 | 说明 |
 |------|------|
-| `functions/api/vip/[[path]].js` | VIP 支付后端（下单/回调验签/自动开通） |
-| `public/js/qrcode.min.js` | 二维码生成库（本地） |
-| `public/index.html` | 导航加了「👑VIP」入口 + 页面 |
-| `public/js/app.js` | 前端逻辑（选套餐→选支付→扫码→轮询） |
-| `public/css/style.css` | VIP 样式 |
-| `sql/vip.sql` | D1 建表语句（运行时会自动建，此文件用于手动初始化） |
+| `functions/api/vip/[[path]].js` | 后端：下单/我已付款/我的订单/管理员核对开通（D1 自动建表） |
+| `public/pay/wechat.jpg` | 你的**微信**收款码截图 |
+| `public/pay/alipay.jpg` | 你的**支付宝**收款码截图 |
+| `public/js/app.js` | 前端：选套餐→展示收款码→提交付款→管理台 |
+| `public/index.html` | 👑VIP 页面入口 |
 
-## 第一步：开通商户（需要个体户/企业营业执照）
+## 管理员是谁
 
-> 没有执照的话，先办一张个体户营业执照（全程网上办、免费、1-3 天下证），
-> 经营范围写「网络技术服务 / 互联网信息服务」等。这是正规收款的前提。
+- users 表加了 `is_admin` 列；**系统里第一个注册的用户自动成为管理员**（通常就是你本人）。
+- 想指定别人/自己：改后端文件顶部 `ADMIN_USERS`，如 `new Set(['你的用户名'])`。
+- 管理台只对管理员显示，核对接口都校验登录态 + 管理员身份。
 
-### 微信支付
-1. 注册 [微信支付商户平台](https://pay.weixin.qq.com)（用营业执照）
-2. 开通「Native 支付」产品（产品中心 → Native支付）
-3. API 安全里：
-   - 申请 **API 证书** → 下载 `apiclient_key.pem`（商户私钥）
-   - 查看 **APIv3 密钥** → 自己设置 32 位密钥
-   - 下载 **平台证书** `wechatpay_xxx.pem`（用于回调验签）
-4. 拿到：商户号 mchid、AppID（公众号/小程序/开放平台的）、证书序列号
+## 换收款码图片
 
-提取平台证书公钥（供验签用）：
-```bash
-openssl x509 -in wechatpay_xxx.pem -pubkey -noout
-# 输出 -----BEGIN PUBLIC KEY----- ... -----END PUBLIC KEY-----
-```
+1. 微信/支付宝 App：我 → 收付款 → 收款码 → 保存图片
+2. 覆盖替换 `public/pay/wechat.jpg` / `public/pay/alipay.jpg`
+3. 重新部署（见下）
 
-### 支付宝
-1. 注册 [支付宝开放平台](https://open.alipay.com)（用营业执照，创建「自研应用」）
-2. 应用 → 开发设置 → 接口加签方式 → **公钥模式**：
-   - 用 `openssl genrsa -out app_private.pem 2048` 生成密钥
-   - `openssl rsa -in app_private.pem -pubout -out app_public.pem` 导出公钥
-   - 上传应用公钥，保存平台返回的「**支付宝公钥**」（纯 base64 字符串）
-3. 应用 → 添加能力 → 签约「**当面付**」（审核一般很快）
-4. 拿到：AppID、应用私钥、支付宝公钥
+## 部署
 
-## 第二步：配置 Cloudflare Pages 环境变量
-
-在 Pages 项目 `xingmanwu` → Settings → Variables and Secrets 添加
-（或用命令行，每个都要重新部署才生效）：
+仓库：github.com/2frykwschc-coder/xingmanwu → Cloudflare Pages（项目 xingmanwu）自动部署。
+注意：本机直连 github.com 不通时，用 Git Data API 推送（见 memory 记录 2026-09-03），或：
 
 ```bash
-npx wrangler pages secret put WECHAT_APPID           --project-name xingmanwu
-npx wrangler pages secret put WECHAT_MCHID           --project-name xingmanwu
-npx wrangler pages secret put WECHAT_SERIAL_NO       --project-name xingmanwu
-npx wrangler pages secret put WECHAT_APIV3_KEY       --project-name xingmanwu
-npx wrangler pages secret put WECHAT_PRIVATE_KEY     --project-name xingmanwu   # apiclient_key.pem 全文
-npx wrangler pages secret put WECHAT_PLATFORM_PUBKEY --project-name xingmanwu   # 平台证书公钥(含 BEGIN/END)
-npx wrangler pages secret put ALIPAY_APP_ID          --project-name xingmanwu
-npx wrangler pages secret put ALIPAY_PRIVATE_KEY     --project-name xingmanwu   # 应用私钥 PEM 全文
-npx wrangler pages secret put ALIPAY_PUBLIC_KEY      --project-name xingmanwu   # 支付宝公钥 base64
-npx wrangler pages secret put PAY_BASE_URL           --project-name xingmanwu   # 填 https://xinmanwu.top
-npx wrangler pages secret put VIP_ADMIN_KEY          --project-name xingmanwu   # 管理密钥(自己定)
+git push origin main          # 正常情况
+npx wrangler pages deploy public/ --branch main   # 需要本机配置 Cloudflare 令牌
 ```
 
-⚠️ PEM 私钥含换行，粘贴时保持原样（`\n` 换行）。
+线上验证：`https://xingmanwu.pages.dev`（`/api/vip/plans` 应返回 4 档价格 + `channels` 全 true）。
+正式域名 xinmanwu.top 的 DNS 解析记录已丢失，需要在 Cloudflare 后台把自定义域名重新加到 Pages 项目。
 
-## 第三步：初始化数据库
+## ⚠️ 风险提示（重要）
 
-```bash
-npx wrangler d1 execute xingmanwu --remote --file=sql/vip.sql
-```
-
-（不执行也行——后端每次请求会自动建表，但建议手动执行确认）
-
-## 第四步：部署
-
-```bash
-git add -A
-git commit -m "feat: VIP 会员支付(微信Native+支付宝当面付)"
-git push   # Cloudflare Pages 自动部署
-```
-
-部署后验证：
-- 打开 `https://xinmanwu.top` → 点「👑VIP」
-- 未登录时提示登录；登录后显示 4 个套餐
-- 未配置密钥时页面提示「支付通道配置中」；配置后显示微信/支付宝按钮
-
-## 使用与运维
-
-- **订单查询**（管理）：`GET https://xinmanwu.top/api/vip/orders?key=你的VIP_ADMIN_KEY`
-- **VIP 有效期**：购买后自动叠加到现有到期时间上（没到期就顺延）
-- **手动开通 VIP**（比如退款补偿）：
-  ```bash
-  npx wrangler d1 execute xingmanwu --remote --command \
-    "INSERT INTO vip_users(user_id,vip_until,updated_at) VALUES(1,datetime('now','+30 days'),datetime('now')) ON CONFLICT(user_id) DO UPDATE SET vip_until=excluded.vip_until"
-  ```
-- **订单超时**：二维码 2 小时有效，超时自动标记 expired
-
-## 安全说明
-
-- 回调接口做了严格验签（微信平台证书 RSA 验签 + AES-GCM 解密；支付宝 RSA2 验签）
-- 金额、订单号、商户号全部二次校验，防伪造回调
-- 验签密钥缺失时回调直接拒绝，不会误开 VIP
+- 个人收款码**官方不允许用于经营/异地远程收款**（2022 年起监管趋严），
+  频繁的大额、跨地域转账会触发微信/支付宝风控，可能导致**收款功能被限制甚至封号**。
+- 建议：作为过渡方案控制规模；想长期正规化就去办一张**个体户营业执照**（免费、1-3 天），
+  按 8 月版说明升级为微信 Native + 支付宝当面付自动到账（代码在 git 历史里可找回）。
+- 人工核对依赖你及时看收款记录，高峰期可能延迟；务必以自己 App 的到账记录为准。
 
 ## 常见问题
 
-- **下单报「微信下单失败」**：检查商户号/AppID 是否匹配、证书序列号是否正确、Native 支付是否已开通
-- **回调一直失败**：确认 `PAY_BASE_URL` 是外网可访问的域名（不能是 localhost），微信/支付宝必须能访问到 `/api/vip/notify/*`
-- **支付宝验签失败**：确认用的是「支付宝公钥」而不是「应用公钥」，格式为纯 base64（无 BEGIN 头）
+- 用户付了钱没开通？→ 管理台核对「已提交付款」订单，确认到账后点开通；金额不符先沟通再操作。
+- 订单状态一直「待付款」→ 用户还没点「我已付款」，或付的是别的订单，按金额+时间人工判断。
+- 误开通/退款 → 管理台没有撤销按钮，直接改数据库 vip_users 或联系站长处理（可加）。

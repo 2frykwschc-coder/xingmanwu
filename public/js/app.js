@@ -320,7 +320,7 @@ async function loadVip(){
   st.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim)">⏳</div>';
   try{
     const [d,plansData]=await Promise.all([apiVip('/api/vip/me'),apiVip('/api/vip/plans')]);
-    vipInfo=Object.assign({},d,{plans:plansData.plans||[],channels:plansData.channels||{}});
+    vipInfo=Object.assign({},d,{plans:plansData.plans||[],channels:plansData.channels||{},qr:plansData.qr||{}});
     let h='';
     if(!currentUser){
       h='<div class=vip-status-card><div>登录后即可开通 VIP 会员</div><button class="btn btn-primary" style="margin-top:12px" onclick="showAuth()">登录 / 注册</button></div>';
@@ -338,9 +338,10 @@ async function loadVip(){
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    if(!c.wechat&&!c.alipay){
-      pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:16px">⚠️ 支付通道配置中，暂时无法购买</div>';
-    }
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">💡 微信/支付宝扫码转账，站长核对到账后自动开通，一般几分钟</div>'+
+      '<div id=myOrdersBox></div>';
+    if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
+    loadMyOrders();
   }catch{
     st.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim)">❌ 加载失败</div>';
   }
@@ -351,44 +352,60 @@ function openPay(planId){
   if(!currentUser){showAuth();return}
   const p=(vipInfo?.plans||[]).find(x=>x.id===planId);
   if(!p)return;
-  const c=vipInfo?.channels||{};
   const m=$('modal'),mc=$('mc');
   m.classList.add('active');document.body.style.overflow='hidden';
   mc.innerHTML='<div class=modal-topbar><button class="btn btn-secondary btn-sm" onclick="closeModal()">← 返回</button><div class=modal-top-title>开通'+p.name+'</div></div>'+
   '<button class=modal-close onclick=closeModal()>✕</button>'+
   '<div style="padding:24px;text-align:center">'+
     '<div style="font-size:20px;font-weight:700">'+p.name+' ¥'+p.price+'</div>'+
-    '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 20px">选择支付方式</div>'+
-    '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">'+
-      '<button class="btn pay-channel'+(c.wechat?'':' disabled')+'"'+(c.wechat?'':' disabled')+' onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信支付</button>'+
-      '<button class="btn pay-channel'+(c.alipay?'':' disabled')+'"'+(c.alipay?'':' disabled')+' onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝</button>'+
+    '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">扫收款码转账对应金额，核对后自动开通</div>'+
+    '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
+      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信收款码</button>'+
+      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝收款码</button>'+
     '</div>'+
-    (!c.wechat&&!c.alipay?'<div style="margin-top:16px;color:var(--text-dim);font-size:13px">支付通道尚未开通</div>':'')+
   '</div>';
 }
 
-// 下单 → 显示动态二维码 → 轮询
+// 下单 → 展示固定收款码 → 扫码转账 → 我已付款 → 轮询开通结果
 async function startPay(planId,channel){
   const mc=$('mc');
-  mc.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim)">⏳ 正在生成订单...</div>';
+  mc.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim)">⏳ 正在创建订单...</div>';
   try{
     const d=await apiVip('/api/vip/order',{method:'POST',body:JSON.stringify({plan:planId,channel})});
     if(d.error){mc.innerHTML='<div style="padding:40px;text-align:center">❌ '+d.error+'<br><br><button class="btn btn-secondary" onclick="closeModal()">返回</button></div>';return}
     payOrder=d;
-    mc.innerHTML='<div style="padding:24px;text-align:center">'+
-      '<div style="font-size:18px;font-weight:700">¥'+(d.amount/100).toFixed(2)+'</div>'+
-      '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 16px">'+(channel==='wechat'?'请使用微信扫码支付':'请使用支付宝扫码支付')+'</div>'+
-      '<div id=payQr style="display:inline-block;background:#fff;padding:12px;border-radius:12px"></div>'+
-      '<div id=payStatus style="margin-top:14px;font-size:14px;color:var(--text-dim)">⏳ 等待扫码支付...</div>'+
-      '<div style="margin-top:8px;font-size:12px;color:var(--text-dim)">订单号 '+d.order_no+' · 二维码 2 小时内有效</div>'+
-      '<div style="margin-top:16px"><button class="btn btn-secondary btn-sm" onclick="closeModal()">取消</button></div>'+
+    const qrImg=(vipInfo?.qr||{})[channel]||'/pay/'+channel+'.jpg';
+    mc.innerHTML='<div style="padding:20px;text-align:center">'+
+      '<div style="font-size:18px;font-weight:700">请扫码转账 ¥'+(d.amount/100).toFixed(2)+'</div>'+
+      '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">'+(channel==='wechat'?'微信收款码':'支付宝收款码')+' · 金额'+(d.amount/100).toFixed(2)+'元 · 订单 '+d.order_no+'</div>'+
+      '<div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;border:1px solid #eee"><img src="'+qrImg+'" alt="收款码" style="display:block;max-height:300px;max-width:66vw;object-fit:contain"></div>'+
+      '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.8">① 用'+(channel==='wechat'?'微信':'支付宝')+'扫上方收款码，转账 <b>¥'+(d.amount/100).toFixed(2)+'</b><br>② 付款后点击下方「我已付款」<br>③ 站长核对到账后自动开通（一般几分钟）</div>'+
+      '<div style="margin-top:12px"><input id=payNoInp placeholder="交易单号（选填，方便核对）" style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;width:250px;max-width:85%;font-size:13px"></div>'+
+      '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
+      '<div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
+        '<button class="btn btn-primary" id=paidBtn onclick="submitPaid()">💸 我已付款，等待开通</button>'+
+        '<button class="btn btn-secondary" onclick="closeModal()">关闭</button></div>'+
     '</div>';
-    new QRCode($('payQr'),{text:d.qr_content,width:210,height:210,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
     clearInterval(payTimer);
-    payTimer=setInterval(pollPay,2500);
+    payTimer=setInterval(pollPay,4000);
   }catch{
     mc.innerHTML='<div style="padding:40px;text-align:center">❌ 网络错误<br><br><button class="btn btn-secondary" onclick="closeModal()">返回</button></div>';
   }
+}
+
+async function submitPaid(){
+  if(!payOrder)return;
+  const ps=$('payStatus');
+  const btn=$('paidBtn');
+  if(btn){btn.disabled=true;btn.textContent='提交中...'}
+  try{
+    const payNo=($('payNoInp')?.value||'').trim();
+    const d=await apiVip('/api/vip/order/'+payOrder.order_no+'/paid',{method:'POST',body:JSON.stringify({pay_no:payNo})});
+    if(ps)ps.innerHTML=d.ok?'<div style="color:#ffb74d;font-weight:600">✅ 已提交！站长确认后自动开通，可关闭本页稍后查看</div>':'❌ '+(d.error||'提交失败');
+  }catch{
+    if(ps)ps.innerHTML='<div style="color:#e57373">❌ 网络错误，请重试</div>';
+  }
+  if(btn){btn.disabled=false;btn.textContent='💸 我已付款，等待开通'}
 }
 
 async function pollPay(){
@@ -398,15 +415,76 @@ async function pollPay(){
     if(d.status==='paid'){
       clearInterval(payTimer);payTimer=null;
       const ps=$('payStatus');
-      if(ps)ps.innerHTML='<div style="color:#81c784;font-weight:700;font-size:16px">🎉 支付成功！</div>';
+      if(ps)ps.innerHTML='<div style="color:#81c784;font-weight:700;font-size:16px">🎉 开通成功！</div>';
       refreshVipBadge();
       setTimeout(()=>{closeModal();loadVip()},1500);
-    }else if(d.status==='expired'||d.status==='closed'){
+    }else if(d.status==='closed'){
       clearInterval(payTimer);payTimer=null;
       const ps=$('payStatus');
-      if(ps)ps.innerHTML='<div style="color:#e57373">⏰ 订单已过期，请重新下单</div>';
+      if(ps)ps.innerHTML='<div style="color:#e57373">该订单已关闭，如有疑问请联系站长</div>';
     }
   }catch{}
+}
+
+// ── 工具 ──
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function vipPlanName(id){const p=(vipInfo?.plans||[]).find(x=>x.id===id);return p?p.name:id}
+function fmtT(t){if(!t)return'';try{return new Date(t).toLocaleString('zh-CN',{hour12:false})}catch{return''}}
+function orderStatusHtml(o){
+  if(o.status==='paid')return '<span style="color:#81c784">✅ 已开通'+(o.vip_until?' 至 '+o.vip_until.slice(0,10):'')+'</span>';
+  if(o.status==='closed')return '<span style="color:#aaa">已关闭</span>';
+  return o.platform_order
+    ? '<span style="color:#ffb74d">⏳ 已提交付款，待核对</span>'
+    : '<span style="color:var(--text-dim)">待付款</span>';
+}
+
+// 我的最近订单
+async function loadMyOrders(){
+  if(!currentUser)return;
+  const box=$('myOrdersBox');if(!box)return;
+  try{
+    const list=await apiVip('/api/vip/orders/mine');
+    if(!list||!list.length){box.innerHTML='';return}
+    box.innerHTML='<div style="margin-top:16px;text-align:left"><div style="font-size:14px;font-weight:700;margin-bottom:6px">📋 我的最近订单</div>'+
+      list.map(o=>'<div style="font-size:12px;color:var(--text-dim);padding:5px 0;border-bottom:1px dashed rgba(128,128,128,.15)">'+
+        esc(o.order_no)+' · '+esc(vipPlanName(o.plan))+' ¥'+(o.amount/100).toFixed(2)+' · '+fmtT(o.created_at)+' · '+orderStatusHtml(o)+'</div>').join('')+'</div>';
+  }catch{}
+}
+
+// ── 管理台（仅管理员可见） ──
+async function loadAdminOrders(){
+  const box=$('vipAdminBox');if(!box)return;
+  box.innerHTML='<div style="font-size:15px;font-weight:700;margin-bottom:8px">🛠 管理台 · 订单核对</div><div id=vipAdminList style="font-size:12px;color:var(--text-dim)">⏳</div>';
+  try{
+    const list=await apiVip('/api/vip/admin/orders');
+    const el=$('vipAdminList');if(!el)return;
+    if(!list||!list.length){el.innerHTML='<div style="color:var(--text-dim)">暂无订单</div>';return}
+    el.innerHTML=list.map(o=>{
+      const pend=o.status==='pending';
+      const actions=pend
+        ? '<button class="btn btn-sm" style="background:#2e7d32;color:#fff;margin-left:6px" onclick="admVerify(\''+o.order_no+'\')">💰 已到账，开通</button>'+
+          '<button class="btn btn-sm btn-secondary" style="margin-left:6px" onclick="admClose(\''+o.order_no+'\')">关闭</button>'
+        : '';
+      return '<div style="padding:8px;border:1px solid rgba(128,128,128,.2);border-radius:8px;margin-bottom:6px;background:rgba(128,128,128,.05)">'+
+        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px"><b>'+esc(o.username||('#'+o.user_id))+'</b><span>'+esc(vipPlanName(o.plan))+' ¥'+(o.amount/100).toFixed(2)+' · '+(o.channel==='wechat'?'💚微信':'💙支付宝')+'</span></div>'+
+        '<div style="color:var(--text-dim);margin:3px 0">'+fmtT(o.created_at)+' · '+esc(o.order_no)+(o.platform_order?' · 付款单号: '+esc(o.platform_order):'')+'</div>'+
+        '<div style="display:flex;align-items:center;flex-wrap:wrap">'+orderStatusHtml(o)+actions+'</div>'+
+      '</div>';
+    }).join('');
+  }catch{
+    const el=$('vipAdminList');if(el)el.innerHTML='<div style="color:#e57373">❌ 加载失败</div>';
+  }
+}
+async function admVerify(orderNo){
+  if(!confirm('确认这笔钱已到账？将立即为用户开通 VIP'))return;
+  const d=await apiVip('/api/vip/admin/verify',{method:'POST',body:JSON.stringify({order_no:orderNo})});
+  alert(d.ok?'✅ 已开通'+(d.vip_until?' 至 '+d.vip_until.slice(0,10):''):'❌ '+(d.error||'操作失败'));
+  loadAdminOrders();loadVip();
+}
+async function admClose(orderNo){
+  if(!confirm('关闭该订单？(未到账或退款时使用)'))return;
+  await apiVip('/api/vip/admin/close',{method:'POST',body:JSON.stringify({order_no:orderNo})});
+  loadAdminOrders();
 }
 
 // 关闭弹窗时停止轮询(已合并进 closeModal)
