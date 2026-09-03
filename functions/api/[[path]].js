@@ -132,13 +132,20 @@ export async function onRequest(context) {
       else if (sort === 'title') orderBy = 'title_romaji ASC';
       else if (sort === 'favorites') orderBy = 'favorites DESC NULLS LAST';
 
+      // 资源优先排序: 0=站内可读(dex有可读章节) → 1=未探测/待确认 → 2=需跳转(零章或仅外部源)
+      const resExpr =
+        'CASE WHEN dm.rc>0 THEN 0 WHEN fa.manga_id IS NOT NULL THEN 2 WHEN dm.rc IS NULL THEN 1 WHEN dm.total>0 THEN 1 ELSE 2 END';
+
       const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
       const countQuery = 'SELECT COUNT(*) as c FROM manga ' + wc;
+      const joins =
+        ' LEFT JOIN (SELECT manga_id, MAX(COALESCE(readable_chapters,0)) rc, MAX(COALESCE(total_chapters,0)) total FROM dex_mapping GROUP BY manga_id) dm ON dm.manga_id=manga.id' +
+        ' LEFT JOIN (SELECT manga_id FROM fix_alt WHERE chapters>0 GROUP BY manga_id) fa ON fa.manga_id=manga.id';
       const dataQuery =
-        'SELECT id,title_romaji,title_english,title_native,cover_url,format,score,popularity,chapters,volumes,genres,manga_status FROM manga ' +
-        wc +
-        ' ORDER BY ' +
-        orderBy +
+        'SELECT manga.id,title_romaji,title_english,title_native,cover_url,format,score,popularity,chapters,volumes,genres,manga_status,' +
+        resExpr + ' AS res_cls' +
+        ' FROM manga' + joins + wc +
+        ' ORDER BY res_cls ASC,' + orderBy +
         ' LIMIT ? OFFSET ?';
 
       const [dRes, cRes] = await Promise.all([
