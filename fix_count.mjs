@@ -55,6 +55,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
         db.run("UPDATE dex_mapping SET total_chapters=? WHERE manga_id=?", [ch, z.id]);
         fixed++;
       }
+      // sql.js is in-memory: persist to disk so fixes survive process exit
+      if (processed % 25 === 0) db.save();
     } catch(e) {
       // Network error, skip
     }
@@ -69,7 +71,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
     await sleep(300);
   }
   
-  // Save final state
+  // Save final state + persist DB
+  db.save();
   fs.writeFileSync(stateFile, `${processed},${fixed}`);
   
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);

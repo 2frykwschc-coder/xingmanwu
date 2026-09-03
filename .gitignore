@@ -23,3 +23,7 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# local db backups
+data/*.sqlite
+data/*.db.bak*

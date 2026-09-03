@@ -2,11 +2,39 @@
 const API_URL = "https://xingmanwu-api.rtxn7yj57c.workers.dev";
 const WORKER_URL = ''; // e.g. 'https://xingmanwu-proxy.xxx.workers.dev'
 
-let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id),api=async u=>(await fetch(u)).json(),post=(u,d)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}),del=u=>fetch(u,{method:'DELETE'});let sugTimer;
+let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id);
+const hdr=()=>{const h={'Content-Type':'application/json'};const t=localStorage.getItem(TOKEN_KEY);if(t)h['Authorization']='Bearer '+t;return h};
+const api=async u=>{try{const r=await fetch(u,{headers:hdr()});const d=await r.json().catch(()=>({}));if(d&&d.error==='请先登录')handleSessionLost();return d}catch(e){return{error:'network'}}};
+const post=(u,d)=>fetch(u,{method:'POST',headers:hdr(),body:JSON.stringify(d)});
+const del=u=>fetch(u,{method:'DELETE',headers:hdr()});let sugTimer;
 
 /* ========== 用户系统 ========== */
 let currentUser=null;
 const TOKEN_KEY='xingmanwu_token';
+
+// ── 全站登录墙: 未登录时覆盖全站, 只能看到登录/注册 ──
+function applyGate(){
+  const show=!currentUser;
+  let w=$('gateWall');
+  if(show){
+    if(!w){w=document.createElement('div');w.id='gateWall';document.body.appendChild(w)}
+    w.style.cssText='position:fixed;inset:0;z-index:150;background:var(--bg,#0f0f1a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px';
+    w.innerHTML='<div style="font-size:40px">✨</div>'+
+      '<div style="font-size:24px;font-weight:800;letter-spacing:2px">星漫屋</div>'+
+      '<div style="color:var(--text-dim);font-size:14px;line-height:2">本站内容仅对登录会员开放<br>注册登录后可浏览全站 · 开通 VIP 解锁全部阅读</div>'+
+      '<div style="display:flex;gap:12px;margin-top:10px">'+
+        '<button class="btn btn-primary" onclick="showAuth(\'login\')">登 录</button>'+
+        '<button class="btn btn-secondary" onclick="showAuth(\'register\')">注 册</button></div>'+
+      '<div style="color:var(--text-dim);font-size:12px;position:absolute;bottom:22px;left:0;right:0">— 星漫屋 · 会员制漫画站 —</div>';
+  }else if(w){w.remove()}
+}
+// token 失效/被后端拒绝时回到登录墙
+function handleSessionLost(){
+  localStorage.removeItem(TOKEN_KEY);
+  if(currentUser){currentUser=null;updateUserBtn()}
+  closeModal();closeReader();
+  applyGate();
+}
 
 // 带 auth header 的请求
 async function apiWithToken(url,token){
@@ -20,6 +48,7 @@ async function apiWithToken(url,token){
 (async function initAuth(){
   const t=localStorage.getItem(TOKEN_KEY);
   if(t){try{const d=await apiWithToken('/api/auth/me',t);if(d&&d.user){currentUser=d.user;updateUserBtn();refreshVipBadge()}}catch{}}
+  applyGate();
 })();
 
 function updateUserBtn(){
@@ -38,6 +67,7 @@ async function logout(){
   currentUser=null;
   updateUserBtn();
   closeAuth();
+  applyGate();
 }
 
 // auth 弹窗用 fetch（带 auth header）
@@ -49,11 +79,11 @@ async function apiAuth(url,body){
 }
 
 let authMode='login';
-function showAuth(){
+function showAuth(mode){
   if(currentUser){updateUserBtn();return}
   $('authModal').classList.add('active');
   document.body.style.overflow='hidden';
-  switchAuth('login');
+  switchAuth(mode==='register'?'register':'login');
 }
 function closeAuth(){
   $('authModal').classList.remove('active');
@@ -85,6 +115,9 @@ async function doAuth(){
       currentUser=d.user;
       updateUserBtn();
       closeAuth();
+      applyGate();
+      refreshVipBadge();
+      navigate(st.page);
     }
   }catch(e){errEl.textContent='网络错误';errEl.style.display='block'}
 }
@@ -115,14 +148,14 @@ function renderPagination(d,id,fn){const e=$(id);if(!d.totalPages||d.totalPages<
 
 
 function slugify(t){return t.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'')}
-function extLinks(d){const t=d.title_romaji||d.title_english||'';if(!t)return'';const s=slugify(t);const e=encodeURIComponent(t);let h='<div class=ext-links><div class=ext-links-title>📖 外部阅读</div>';
+function extLinks(d){if(!vipOK())return'';const t=d.title_romaji||d.title_english||'';if(!t)return'';const s=slugify(t);const e=encodeURIComponent(t);let h='<div class=ext-links><div class=ext-links-title>📖 外部阅读</div>';
 // 如果服务器返回了 alt_sources（浏览器脚本查到的），优先显示
 if(d.alt_sources?.length){for(const a of d.alt_sources){h+=`<a class="ext-link ext-link-found" href="${a.source_url}" target=_blank rel=noopener>${a.source} (${a.chapters}话)</a>`}}else{h+=`<a class="ext-link" href="https://comick.io/comic/${s}" target=_blank rel=noopener>Comick</a>`;h+=`<a class="ext-link" href="https://mangafire.to/manga/${s}" target=_blank rel=noopener>MangaFire</a>`}
 h+=`<a class="ext-link" href="https://mangadex.org/search?q=${e}" target=_blank rel=noopener>MangaDex</a></div>`;
 // 如果配了 Worker，异步查活数据
 if(WORKER_URL&&!d.chapters&&!d.alt_sources?.length){fetch(WORKER_URL+'/check?q='+e).then(r=>r.json()).then(r=>{if(!r||!r.found||!r.sources)return;const el=$('mc').querySelector('.ext-links');if(!el)return;let h2='<div class=ext-links><div class=ext-links-title>📖 外部阅读</div>';for(const s of r.sources){if(s.chapters>0){h2+=`<a class="ext-link ext-link-found" href="${s.url}" target=_blank rel=noopener>${s.source} (${s.chapters}话)</a>`}else{h2+=`<a class="ext-link" href="${s.url}" target=_blank rel=noopener>${s.source}</a>`}}h2+=`<a class="ext-link" href="https://mangadex.org/search?q=${e}" target=_blank rel=noopener>MangaDex</a></div>`;el.outerHTML=h2}).catch(()=>{})}return h}
 
-async function view(id){const m=$('modal'),c=$('mc');m.classList.add('active');document.body.style.overflow='hidden';c.innerHTML='<div style="text-align:center;padding:40px">⏳</div>';try{const d=await api('/api/manga/'+id),cl=d.collection||{};const sm={reading:'📖在看',completed:'✅看完',plan_to_read:'📌想看',on_hold:'⏸️搁置',dropped:'❌弃番'},fm={MANGA:'漫画',NOVEL:'小说',ONE_SHOT:'短篇',MANHWA:'韩漫',MANHUA:'国漫'},sn={FINISHED:'已完结',RELEASING:'连载中',NOT_YET_RELEASED:'未发布',CANCELLED:'已取消'};c.innerHTML=`<div class=modal-topbar><button class="btn btn-secondary btn-sm" onclick="closeModal()">← 返回</button><div class=modal-top-title>${d.title_romaji||'详情'}</div></div>${d.banner_url?`<img src=${d.banner_url} style=width:100%;max-height:300px;object-fit:cover onerror=this.style.display='none'>`:''}<button class=modal-close onclick=closeModal()>✕</button><div class=modal-body style=display:flex;gap:20px;flex-wrap:wrap><div style=width:180px;flex-shrink:0><img src=${d.cover_url} style=width:100%;border-radius:8px onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 280%22><rect fill=%22%23222%22 width=%22200%22 height=%22280%22/><text x=%22100%22 y=%22140%22 fill=%22%23666%22 font-size=%2240%22 text-anchor=%22middle%22>📚</text></svg>'"><div style=margin-top:12px>${
+async function view(id){const m=$('modal'),c=$('mc');m.classList.add('active');document.body.style.overflow='hidden';c.innerHTML='<div style="text-align:center;padding:40px">⏳</div>';try{const vi=await apiVip('/api/vip/me');vipInfo=Object.assign({},vipInfo||{},vi)}catch{}try{const d=await api('/api/manga/'+id),cl=d.collection||{};const sm={reading:'📖在看',completed:'✅看完',plan_to_read:'📌想看',on_hold:'⏸️搁置',dropped:'❌弃番'},fm={MANGA:'漫画',NOVEL:'小说',ONE_SHOT:'短篇',MANHWA:'韩漫',MANHUA:'国漫'},sn={FINISHED:'已完结',RELEASING:'连载中',NOT_YET_RELEASED:'未发布',CANCELLED:'已取消'};c.innerHTML=`<div class=modal-topbar><button class="btn btn-secondary btn-sm" onclick="closeModal()">← 返回</button><div class=modal-top-title>${d.title_romaji||'详情'}</div></div>${d.banner_url?`<img src=${d.banner_url} style=width:100%;max-height:300px;object-fit:cover onerror=this.style.display='none'>`:''}<button class=modal-close onclick=closeModal()>✕</button><div class=modal-body style=display:flex;gap:20px;flex-wrap:wrap><div style=width:180px;flex-shrink:0><img src=${d.cover_url} style=width:100%;border-radius:8px onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 280%22><rect fill=%22%23222%22 width=%22200%22 height=%22280%22/><text x=%22100%22 y=%22140%22 fill=%22%23666%22 font-size=%2240%22 text-anchor=%22middle%22>📚</text></svg>'"><div style=margin-top:12px>${
 cl.id?`<select class=col-status-select style=width:100% onchange="col(${d.id},this.value)">${Object.entries(sm).map(([k,v])=>`<option value=${k} ${cl.status===k?'selected':''}>${v}</option>`).join('')}</select><button class="btn btn-sm btn-secondary" style="width:100%;margin-top:6px;background:rgba(229,115,115,.2);color:#e57373" onclick="rm(${d.id})">🗑️移除</button>`
 :`<button class="btn btn-primary btn-sm" style=width:100%;padding:10px onclick="add(${d.id},'plan_to_read')">📌想看</button><button class="btn btn-primary btn-sm" style=width:100%;padding:10px;margin-top:6px onclick="add(${d.id},'reading')">📖在看</button>`}
 <button class="btn btn-primary btn-sm" style=width:100%;padding:10px;margin-top:6px onclick="openReader(${d.id})">📖 在线阅读</button></div></div>
@@ -131,7 +164,26 @@ cl.id?`<select class=col-status-select style=width:100% onchange="col(${d.id},th
 ${d.genres?.length?`<div class=genre-tags>${d.genres.map(g=>`<span class=tag>${g}</span>`).join('')}</div>`:''}
 <div class=detail-desc>${d.description?d.description.slice(0,600)+(d.description.length>600?'...':''):'暂无简介'}</div>${extLinks(d)}</div></div>`}catch{c.innerHTML='<div style="text-align:center;padding:40px">❌</div>'}}
 
+function vipOK(){return !!(vipInfo&&(vipInfo.isAdmin||(vipInfo.vip&&vipInfo.vip.active)))}
 async function openReader(id){
+  try{const d=await apiVip('/api/vip/me');vipInfo=Object.assign({},vipInfo||{},d)}catch{}
+  if(!vipOK()){
+    const m=$('modal'),mc=$('mc');
+    m.classList.add('active');document.body.style.overflow='hidden';
+    mc.innerHTML='<div class=modal-topbar><button class="btn btn-secondary btn-sm" onclick="closeModal()">← 返回</button><div class=modal-top-title>🔒 需要 VIP</div></div>'+
+      '<button class=modal-close onclick=closeModal()>✕</button>'+
+      '<div style="padding:36px 24px;text-align:center">'+
+        '<div style="font-size:42px;margin-bottom:12px">👑</div>'+
+        '<div style="font-size:19px;font-weight:700;margin-bottom:10px">阅读需要 VIP 会员</div>'+
+        '<div style="color:var(--text-dim);font-size:13px;line-height:2;margin-bottom:20px">开通 VIP 解锁全部漫画在线阅读<br>周 ¥8 · 月 ¥28 · 季 ¥88 · 年 ¥188</div>'+
+        '<button class="btn btn-primary" style="padding:12px 34px" onclick="closeModal();navigate(\'vip\')">👑 去开通 VIP</button>'+
+      '</div>';
+    return;
+  }
+  closeModal();
+  startReader(id);
+}
+async function startReader(id){
   closeModal();
   const r=$('reader'),c=$('rc');
   r.classList.add('active');document.body.style.overflow='hidden';
@@ -209,7 +261,8 @@ async function readChapter(cid,chIdx){
 }
 
 function imgUrl(pg){
-  return '/api/dex/img/'+rd.hash+'/'+pg.file+'?base='+encodeURIComponent(rd.baseUrl);
+  const t=localStorage.getItem(TOKEN_KEY)||'';
+  return '/api/dex/img/'+rd.hash+'/'+pg.file+'?base='+encodeURIComponent(rd.baseUrl)+(t?'&t='+encodeURIComponent(t):'');
 }
 
 function renderPage(){

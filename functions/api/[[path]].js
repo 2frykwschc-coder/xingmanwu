@@ -15,7 +15,7 @@ export async function onRequest(context) {
   const cors = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
   };
   if (m === 'OPTIONS') return new Response(null, { headers: cors });
 
@@ -25,6 +25,46 @@ export async function onRequest(context) {
   });
 
   try {
+    // ═══ 全站门禁 ═══
+    // 规则: 1) 未登录游客不可访问任何内容接口(只放行注册/登录/查自己)
+    //       2) 阅读相关 dex/* 与外部源检索 ext/search 额外要求 VIP
+    //       3) 管理员免 VIP 检查
+    const isAuthRoute = path === 'auth/register' || path === 'auth/login' || path === 'auth/me';
+
+    async function authUser() {
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '').trim() || url.searchParams.get('t') || '';
+      if (!token) return null;
+      try {
+        const s = await db.prepare('SELECT user_id FROM sessions WHERE token=?').bind(token).first();
+        if (!s) return null;
+        const u = await db.prepare('SELECT id, username FROM users WHERE id=?').bind(s.user_id).first();
+        return u || null;
+      } catch (e) { return null; }
+    }
+
+    async function hasVip(u) {
+      if (!u) return false;
+      try { // 管理员免检
+        const a = await db.prepare('SELECT is_admin FROM users WHERE id=?').bind(u.id).first();
+        if (a && a.is_admin === 1) return true;
+      } catch (e) { /* users 表可能还没有 is_admin 列 */ }
+      try {
+        const v = await db.prepare("SELECT vip_until FROM vip_users WHERE user_id=? AND vip_until > datetime('now')").bind(u.id).first();
+        return !!v;
+      } catch (e) {
+        try { // 表还没建过则自建后重试一次
+          await db.prepare('CREATE TABLE IF NOT EXISTS vip_users (user_id INTEGER PRIMARY KEY, vip_until TEXT, updated_at TEXT)').run();
+          const v2 = await db.prepare("SELECT vip_until FROM vip_users WHERE user_id=? AND vip_until > datetime('now')").bind(u.id).first();
+          return !!v2;
+        } catch (e2) { return false; }
+      }
+    }
+
+    const me = isAuthRoute ? null : await authUser();
+    if (!isAuthRoute && !me) return j({ error: '请先登录' }, 401);
+    const readingRoute = parts[0] === 'dex' || path === 'ext/search';
+    if (readingRoute && !(await hasVip(me))) return j({ error: '需要 VIP 会员才能阅读' }, 403);
+
     // ============ 已有端点 ============
 
     // -- /api/stats --

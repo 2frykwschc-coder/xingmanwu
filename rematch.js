@@ -25,6 +25,12 @@ const all = db.all(`
   ORDER BY m.popularity DESC
 `);
 const total = all.length;
+// Matches shrink the list between runs, so the cumulative counter can drift
+// past the current list size. If so, restart from the top of the list.
+if (processed >= total) {
+  console.log(`State counter ${processed} >= current list ${total}; restarting from top`);
+  processed = 0;
+}
 const remaining = all.slice(processed);
 console.log(`${total} need matching | ${processed} done | ${matched} matched so far`);
 
