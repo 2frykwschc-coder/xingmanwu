@@ -25,12 +25,7 @@ export async function onRequest(context) {
   });
 
   try {
-    // ═══ 全站门禁 ═══
-    // 规则: 1) 未登录游客不可访问任何内容接口(只放行注册/登录/查自己)
-    //       2) 阅读相关 dex/* 与外部源检索 ext/search 额外要求 VIP
-    //       3) 管理员免 VIP 检查
-    const isAuthRoute = path === 'auth/register' || path === 'auth/login' || path === 'auth/me';
-
+    // ═══ 内容访问: 游客可浏览全站; 仅阅读类(dex/* 与 ext/search)需 VIP, 管理员免检 ═══
     async function authUser() {
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '').trim() || url.searchParams.get('t') || '';
       if (!token) return null;
@@ -60,8 +55,7 @@ export async function onRequest(context) {
       }
     }
 
-    const me = isAuthRoute ? null : await authUser();
-    if (!isAuthRoute && !me) return j({ error: '请先登录' }, 401);
+    const me = await authUser();
     const readingRoute = parts[0] === 'dex' || path === 'ext/search';
     if (readingRoute && !(await hasVip(me))) return j({ error: '需要 VIP 会员才能阅读' }, 403);
 

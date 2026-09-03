@@ -4,7 +4,7 @@ const WORKER_URL = ''; // e.g. 'https://xingmanwu-proxy.xxx.workers.dev'
 
 let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id);
 const hdr=()=>{const h={'Content-Type':'application/json'};const t=localStorage.getItem(TOKEN_KEY);if(t)h['Authorization']='Bearer '+t;return h};
-const api=async u=>{try{const r=await fetch(u,{headers:hdr()});const d=await r.json().catch(()=>({}));if(d&&d.error==='请先登录')handleSessionLost();return d}catch(e){return{error:'network'}}};
+const api=async u=>{try{const r=await fetch(u,{headers:hdr()});const d=await r.json().catch(()=>({}));if(d&&d.error==='请先登录'&&localStorage.getItem(TOKEN_KEY))handleSessionLost();return d}catch(e){return{error:'network'}}};
 const post=(u,d)=>fetch(u,{method:'POST',headers:hdr(),body:JSON.stringify(d)});
 const del=u=>fetch(u,{method:'DELETE',headers:hdr()});let sugTimer;
 
@@ -12,27 +12,13 @@ const del=u=>fetch(u,{method:'DELETE',headers:hdr()});let sugTimer;
 let currentUser=null;
 const TOKEN_KEY='xingmanwu_token';
 
-// ── 全站登录墙: 未登录时覆盖全站, 只能看到登录/注册 ──
-function applyGate(){
-  const show=!currentUser;
-  let w=$('gateWall');
-  if(show){
-    if(!w){w=document.createElement('div');w.id='gateWall';document.body.appendChild(w)}
-    w.style.cssText='position:fixed;inset:0;z-index:150;background:var(--bg,#0f0f1a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px';
-    w.innerHTML='<div style="font-size:40px">✨</div>'+
-      '<div style="font-size:24px;font-weight:800;letter-spacing:2px">星漫屋</div>'+
-      '<div style="color:var(--text-dim);font-size:14px;line-height:2">本站内容仅对登录会员开放<br>注册登录后可浏览全站 · 开通 VIP 解锁全部阅读</div>'+
-      '<div style="display:flex;gap:12px;margin-top:10px">'+
-        '<button class="btn btn-primary" onclick="showAuth(\'login\')">登 录</button>'+
-        '<button class="btn btn-secondary" onclick="showAuth(\'register\')">注 册</button></div>'+
-      '<div style="color:var(--text-dim);font-size:12px;position:absolute;bottom:22px;left:0;right:0">— 星漫屋 · 会员制漫画站 —</div>';
-  }else if(w){w.remove()}
-}
-// token 失效/被后端拒绝时回到登录墙
+// ── 登录墙已移除: 全站对游客开放浏览, 阅读需VIP ──
+function applyGate(){const w=$('gateWall');if(w)w.remove()}
+// token 失效时清会话即可, 不打断游客浏览
 function handleSessionLost(){
   localStorage.removeItem(TOKEN_KEY);
   if(currentUser){currentUser=null;updateUserBtn()}
-  closeModal();closeReader();
+  closeAuth();
   applyGate();
 }
 
@@ -132,7 +118,7 @@ function navigate(p){document.querySelectorAll('.page').forEach(e=>e.classList.r
 function doSearch(){navigate('browse');st.bp=1;loadBrowse();}
 async function loadHome(){try{const s=await api('/api/stats'),r=await api('/api/recent');$('hs').innerHTML=`<span>📚${(s.totalManga||0).toLocaleString()}部</span><span>❤️${s.totalCollected||0}部已收藏</span>`;renderGrid(r.data||[],'rg')}catch{$('hs').innerHTML='<span>⏳加载中</span>'}}
 async function loadBrowse(){const g=$('bg');g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">⏳</div>';const s=$('ss').value,f=$('gf').value,f2=$('ff').value,r=$('rf').value,q=document.getElementById('s').value.trim();let u=`/api/manga?page=${st.bp}&limit=30&sort=${s}`;if(q)u+=`&q=${encodeURIComponent(q)}`;if(f)u+=`&genre=${encodeURIComponent(f)}`;if(f2)u+=`&format=${f2}`;if(r)u+=`&region=${r}`;try{const d=await api(u);renderGrid(d.data,'bg');renderPagination(d,'bp',p=>{st.bp=p;loadBrowse()})}catch{g.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text-dim)">❌</div>'}try{const gs=await api('/api/genres'),sel=$('gf');if(sel.options.length<=1)gs.forEach(g=>{const o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o)})}catch{}try{const rs=await api('/api/regions'),sel=$('rf');if(sel.options.length<=1)rs.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.label+' ('+r.count+')';sel.appendChild(o)})}catch{}}
-async function loadCollections(){const l=$('cl'),p=$('cp');l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">⏳</div>';const s=$('cs').value;let u=`/api/my-collections?page=${st.cp}&limit=30`;if(s)u+=`&status=${s}`;try{const d=await api(u);if(!d.data?.length){l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">还没有收藏<br><br><button class="btn btn-primary" onclick=navigate(\'browse\')>去浏览</button></div>';p.innerHTML='';return}const sm={reading:'📖在看',completed:'✅看完',plan_to_read:'📌想看',on_hold:'⏸️搁置',dropped:'❌弃番'};l.innerHTML=d.data.map(i=>`<div class="collection-item" style="border-left:3px solid ${i.status==='reading'?'#4fc3f7':i.status==='completed'?'#81c784':i.status==='plan_to_read'?'#ffb74d':'#888'}">
+async function loadCollections(){const l=$('cl'),p=$('cp');l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">⏳</div>';const s=$('cs').value;let u=`/api/my-collections?page=${st.cp}&limit=30`;if(s)u+=`&status=${s}`;try{const d=await api(u);if(d.error){l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">🔒 收藏功能需要登录账号<br><br><button class="btn btn-primary" onclick="showAuth(\'login\')">登录 / 注册</button></div>';p.innerHTML='';return}if(!d.data?.length){l.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim)">还没有收藏<br><br><button class="btn btn-primary" onclick=navigate(\'browse\')>去浏览</button></div>';p.innerHTML='';return}const sm={reading:'📖在看',completed:'✅看完',plan_to_read:'📌想看',on_hold:'⏸️搁置',dropped:'❌弃番'};l.innerHTML=d.data.map(i=>`<div class="collection-item" style="border-left:3px solid ${i.status==='reading'?'#4fc3f7':i.status==='completed'?'#81c784':i.status==='plan_to_read'?'#ffb74d':'#888'}">
 <img class="mini-cover" src="${i.cover_url||''}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%23222%22 width=%22100%22 height=%22140%22/><text x=%2250%22 y=%2270%22 fill=%22%23666%22 font-size=%2230%22 text-anchor=%22middle%22>📚</text></svg>'">
 <div class=col-info><div class=col-title>${i.title_romaji||'未知'}</div>
 <div class=col-meta>${i.chapters?i.progress+'/'+i.chapters+'话':''}${i.score?'⭐'+i.score:''}</div></div>
@@ -148,7 +134,7 @@ function renderPagination(d,id,fn){const e=$(id);if(!d.totalPages||d.totalPages<
 
 
 function slugify(t){return t.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'')}
-function extLinks(d){if(!vipOK())return'';const t=d.title_romaji||d.title_english||'';if(!t)return'';const s=slugify(t);const e=encodeURIComponent(t);let h='<div class=ext-links><div class=ext-links-title>📖 外部阅读</div>';
+function extLinks(d){const t=d.title_romaji||d.title_english||'';if(!t)return'';const s=slugify(t);const e=encodeURIComponent(t);let h='<div class=ext-links><div class=ext-links-title>📖 外部阅读</div>';
 // 如果服务器返回了 alt_sources（浏览器脚本查到的），优先显示
 if(d.alt_sources?.length){for(const a of d.alt_sources){h+=`<a class="ext-link ext-link-found" href="${a.source_url}" target=_blank rel=noopener>${a.source} (${a.chapters}话)</a>`}}else{h+=`<a class="ext-link" href="https://comick.io/comic/${s}" target=_blank rel=noopener>Comick</a>`;h+=`<a class="ext-link" href="https://mangafire.to/manga/${s}" target=_blank rel=noopener>MangaFire</a>`}
 h+=`<a class="ext-link" href="https://mangadex.org/search?q=${e}" target=_blank rel=noopener>MangaDex</a></div>`;
@@ -391,7 +377,7 @@ async function loadVip(){
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">💡 微信/支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通</div>'+
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 微信/支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
       '<div id=myOrdersBox></div>';
     if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
     loadMyOrders();
@@ -414,8 +400,8 @@ function openPay(planId){
     '<div style="font-size:20px;font-weight:700">'+p.name+' ¥'+p.price+'</div>'+
     '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">'+(autoMode?'付款成功后自动开通 VIP，无需等待':'扫收款码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
     '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
-      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信收款码</button>'+
-      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝收款码</button>'+
+      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信'+(autoMode?'支付':'收款码')+'</button>'+
+      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝'+(autoMode?'支付':'收款码')+'</button>'+
     '</div>'+
   '</div>';
 }
