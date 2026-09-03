@@ -33,11 +33,11 @@ const QR_IMAGES = { wechat: '/pay/wechat.jpg', alipay: '/pay/alipay.jpg' };
 // 用户付款成功后平台 POST 异步通知本域名 /api/vip/pay/notify, 验签+金额校验通过才自动开通 VIP。
 // 参数在平台后台「商户信息/对接文档」里: pid=商户ID, key=商户密钥, gateway=下单接口地址。
 const MPAY = {
-  enabled: false,          // ← 配置好下面参数后改成 true 即启用; false = 维持固定码人工核对
-  gateway: '',             // 下单网关, 例: 'https://你的平台域名/submit.php'
-  pid: '',                 // 商户ID
-  key: '',                 // 商户密钥
-  typeMap: { wechat: 'wxpay', alipay: 'alipay' }, // 渠道代码, 以平台文档为准
+  enabled: false,          // ← 密钥填入后改成 true 即启用; false = 维持固定码人工核对
+  gateway: 'https://pay.zhiyanchuang.com/mapi.php', // 晓风码支付 服务端下单接口
+  pid: 'M2026090317a75b6aa0', // 商户ID (Man 提供)
+  key: '',                 // ← 商户密钥, 商户后台获取后填入
+  typeMap: { wechat: 'wxpay', alipay: 'alipay' }, // 渠道代码: alipay/wxpay/qqpay/usdt
 };
 
 // ── MD5 纯 JS 实现 (Workers 无内置 MD5, 公开领域算法) ──
