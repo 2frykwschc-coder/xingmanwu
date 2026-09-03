@@ -39,7 +39,7 @@ async function dexSearch(term) {
   const ac = new AbortController();
   const tid = setTimeout(() => ac.abort(), 8000);
   try {
-    const r = await fetch(`${DEX_API}/manga?title=${encodeURIComponent(term)}&limit=10&order[relevance]=desc`, { headers: HEADERS, signal: ac.signal });
+    const r = await fetch(`${DEX_API}/manga?title=${encodeURIComponent(term)}&limit=10&order[relevance]=desc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic`, { headers: HEADERS, signal: ac.signal });
     clearTimeout(tid);
     if (r.status === 429) { await sleep(2000); return { retry: true }; }
     if (!r.ok) return {};

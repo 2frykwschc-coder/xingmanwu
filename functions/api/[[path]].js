@@ -26,6 +26,8 @@ export async function onRequest(context) {
   });
 
   try {
+    // 批量探测“确认无源”标记表(懒建)
+    try { await db.prepare('CREATE TABLE IF NOT EXISTS probe_dead (manga_id INTEGER PRIMARY KEY, probed_at TEXT)').run(); } catch (e) {}
     // ═══ 内容访问: 游客可浏览全站; 仅阅读类(dex/* 与 ext/search)需 VIP, 管理员免检 ═══
     async function authUser() {
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '').trim() || url.searchParams.get('t') || '';
@@ -133,15 +135,16 @@ export async function onRequest(context) {
       else if (sort === 'title') orderBy = 'title_romaji ASC';
       else if (sort === 'favorites') orderBy = 'favorites DESC NULLS LAST';
 
-      // 资源优先排序: 0=站内可读(dex有可读章节) → 1=未探测/待确认 → 2=需跳转(零章或仅外部源)
+      // 资源优先排序: 0=站内可读 → 1=未探测 → 2=需跳转/确认无源
       const resExpr =
-        'CASE WHEN dm.rc>0 THEN 0 WHEN fa.manga_id IS NOT NULL THEN 2 WHEN dm.rc IS NULL THEN 1 WHEN dm.total>0 THEN 1 ELSE 2 END';
+        'CASE WHEN dm.rc>0 THEN 0 WHEN pd.manga_id IS NOT NULL THEN 2 WHEN fa.manga_id IS NOT NULL THEN 2 WHEN dm.rc IS NULL THEN 1 WHEN dm.total>0 THEN 1 ELSE 2 END';
 
       const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
       const countQuery = 'SELECT COUNT(*) as c FROM manga ' + wc;
       const joins =
         ' LEFT JOIN (SELECT manga_id, MAX(COALESCE(readable_chapters,0)) rc, MAX(COALESCE(total_chapters,0)) total FROM dex_mapping GROUP BY manga_id) dm ON dm.manga_id=manga.id' +
-        ' LEFT JOIN (SELECT manga_id FROM fix_alt WHERE chapters>0 GROUP BY manga_id) fa ON fa.manga_id=manga.id';
+        ' LEFT JOIN (SELECT manga_id FROM fix_alt WHERE chapters>0 GROUP BY manga_id) fa ON fa.manga_id=manga.id' +
+        ' LEFT JOIN probe_dead pd ON pd.manga_id=manga.id';
       const dataQuery =
         'SELECT manga.id,title_romaji,title_english,title_native,cover_url,format,score,popularity,chapters,volumes,genres,manga_status,' +
         resExpr + ' AS res_cls' +
@@ -334,7 +337,7 @@ export async function onRequest(context) {
         if (title.length < 2) continue;
         try {
           const r = await fetch(
-            `${DEX_API}/manga?title=${encodeURIComponent(title)}&limit=20&order[relevance]=desc`,
+            `${DEX_API}/manga?title=${encodeURIComponent(title)}&limit=20&order[relevance]=desc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic`,
             { headers: DEX_HEADERS }
           );
           if (!r.ok) continue;
@@ -755,6 +758,7 @@ export async function onRequest(context) {
         .prepare(
           `SELECT m.id,m.title_romaji,m.title_english,m.title_native,m.popularity FROM manga m
            WHERE NOT EXISTS (SELECT 1 FROM dex_mapping d WHERE d.manga_id=m.id)
+             AND NOT EXISTS (SELECT 1 FROM probe_dead p WHERE p.manga_id=m.id)
            ORDER BY m.popularity DESC NULLS LAST LIMIT ?`
         )
         .bind(lim)
@@ -784,13 +788,11 @@ export async function onRequest(context) {
           .bind(id, String(body.dex_id), String(body.dex_title || '').slice(0, 300), total, total > 0 ? total : 0, nowIso)
           .run();
       } else {
-        // 确认无资源: 写入空映射(dex_id=NULL)使其沉底且不再进队列; 阅读时仍可重新搜索覆盖
+        // 确认无资源: 记入 probe_dead(沉底且不再进队列); 用户阅读时仍可重新搜索覆盖
         await db
           .prepare(
-            `INSERT INTO dex_mapping(manga_id,dex_id,dex_title,total_chapters,readable_chapters,last_checked)
-             VALUES(?,NULL,'',0,0,?)
-             ON CONFLICT(manga_id) DO UPDATE SET
-               dex_id=NULL, dex_title='', total_chapters=0, readable_chapters=0, last_checked=excluded.last_checked`
+            `INSERT INTO probe_dead(manga_id,probed_at) VALUES(?,?)
+             ON CONFLICT(manga_id) DO UPDATE SET probed_at=excluded.probed_at`
           )
           .bind(id, nowIso)
           .run();
