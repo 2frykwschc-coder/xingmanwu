@@ -1,10 +1,15 @@
-// 星漫屋 VIP 会员 — 固定收款码 + 点击自动开通(信任模式)
+// 星漫屋 VIP 会员 — 固定收款码 + 人工核对开通(防白嫖)
 // 路由: /api/vip/*
 //
 // 流程:
 //   用户: 选套餐 → 选微信/支付宝 → 看到对应收款码图片 + 应付金额 → 扫码转账
-//         → 填交易单号(选填) 点「我已付款」→ **立即自动开通**(无人工核对)
-//   站长: VIP 页底部「管理台」可事后抽查订单与实际到账是否相符
+//         → 填交易单号 点「我已付款」→ 状态=待核对
+//   站长: VIP 页底部「管理台」→ 看到待核对订单(用户/套餐/金额/单号) → 对照自己收款记录
+//         → 点「已到账，开通」→ 系统按套餐天数顺延 VIP(幂等)。未到账点「关闭」。
+//
+// ⚠ 原理: 个人固定收款码无法自动验单(微信/支付宝不回调网站)。
+//   要“自动验单+零白嫖”只能换商户版 API(需个体户执照): 微信 Native/支付宝当面付,
+//   到账后服务器收到异步通知才开通。拿到执照/商户号后可无缝切换。
 //
 // 管理员识别: users 表 is_admin=1。系统无管理员时，第一个注册的用户自动成为管理员
 // (通常就是你本人)。也可在下方 ADMIN_USERS 里写死用户名。
@@ -140,7 +145,7 @@ export async function onRequest(context) {
         })),
         channels: { wechat: true, alipay: true },
         qr: QR_IMAGES,
-        mode: 'manual', // 固定收款码, 人工核对后开通
+        mode: 'manual', // 固定收款码, 站长核对到账后开通(防白嫖)
       });
     }
 
@@ -192,10 +197,9 @@ export async function onRequest(context) {
       if (order.status === 'paid') return j({ ok: true, already: true, vip_until: order.vip_until });
       const body = await request.json().catch(() => ({}));
       const payNo = (body.pay_no || '').toString().slice(0, 80);
-      // 自动开通(信任模式): 点「我已付款」立即开通, 站长事后在管理台抽查收款记录
-      const r = await handlePaid(db, orderNo, payNo);
-      if (!r.ok) return j({ error: r.reason }, 400);
-      return j({ ok: true, already: false, vip_until: r.vip_until, message: '已自动开通' });
+      // 防白嫖: 仅记录“已提交付款”, 等站长在管理台核对真实到账后点「已到账，开通」才发 VIP
+      await db.prepare('UPDATE vip_orders SET platform_order=? WHERE order_no=?').bind(payNo, orderNo).run();
+      return j({ ok: true, message: '已提交，等待站长核对到账后自动开通' });
     }
 
     // -- GET /api/vip/order/:no (本人或管理员, 轮询用) --
