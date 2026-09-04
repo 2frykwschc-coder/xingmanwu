@@ -22,7 +22,12 @@ export async function onRequest(context) {
 
   const j = (d, s = 200) => new Response(JSON.stringify(d), {
     status: s,
-    headers: { ...cors, 'Content-Type': 'application/json' },
+    headers: {
+      ...cors,
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, max-age=0',
+      'CDN-Cache-Control': 'no-store',
+    },
   });
 
   try {
@@ -754,11 +759,12 @@ export async function onRequest(context) {
     // -- GET /api/probe/queue?limit=300 — 未探测漫画(无 dex_mapping 行), 按热度排队 --
     if (m === 'GET' && path === 'probe/queue') {
       const lim = Math.min(parseInt(url.searchParams.get('limit') || '200') || 200, 500);
+      const incDead = url.searchParams.get('include_dead') === '1';
       const r = await db
         .prepare(
           `SELECT m.id,m.title_romaji,m.title_english,m.title_native,m.popularity FROM manga m
            WHERE NOT EXISTS (SELECT 1 FROM dex_mapping d WHERE d.manga_id=m.id)
-             AND NOT EXISTS (SELECT 1 FROM probe_dead p WHERE p.manga_id=m.id)
+             ${incDead ? '' : 'AND NOT EXISTS (SELECT 1 FROM probe_dead p WHERE p.manga_id=m.id)'}
            ORDER BY m.popularity DESC NULLS LAST LIMIT ?`
         )
         .bind(lim)
