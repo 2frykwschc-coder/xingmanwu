@@ -759,17 +759,23 @@ export async function onRequest(context) {
     // -- GET /api/probe/queue?limit=300 — 未探测漫画(无 dex_mapping 行), 按热度排队 --
     if (m === 'GET' && path === 'probe/queue') {
       const lim = Math.min(parseInt(url.searchParams.get('limit') || '200') || 200, 500);
+      const off = parseInt(url.searchParams.get('offset') || '0') || 0;
       const incDead = url.searchParams.get('include_dead') === '1';
-      const r = await db
-        .prepare(
-          `SELECT m.id,m.title_romaji,m.title_english,m.title_native,m.popularity FROM manga m
-           WHERE NOT EXISTS (SELECT 1 FROM dex_mapping d WHERE d.manga_id=m.id)
-             ${incDead ? '' : 'AND NOT EXISTS (SELECT 1 FROM probe_dead p WHERE p.manga_id=m.id)'}
-           ORDER BY m.popularity DESC NULLS LAST LIMIT ?`
-        )
-        .bind(lim)
-        .all();
-      return j({ data: r.results });
+      const qw =
+        'WHERE NOT EXISTS (SELECT 1 FROM dex_mapping d WHERE d.manga_id=m.id)' +
+        (incDead ? '' : ' AND NOT EXISTS (SELECT 1 FROM probe_dead p WHERE p.manga_id=m.id)');
+      const [r, cnt] = await Promise.all([
+        db
+          .prepare(
+            `SELECT m.id,m.title_romaji,m.title_english,m.title_native,m.popularity FROM manga m ${qw}
+             ORDER BY m.popularity DESC NULLS LAST LIMIT ? OFFSET ?`
+          )
+          .bind(lim, off)
+          .all(),
+        db.prepare(`SELECT COUNT(*) c FROM manga m ${qw}`).all(),
+      ]);
+      const total = cnt.results[0]?.c || 0;
+      return j({ total, data: r.results });
     }
 
     // -- POST /api/probe/result — 探测结果写回 (X-Probe-Key 校验) --
