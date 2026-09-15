@@ -1,9 +1,9 @@
-const CACHE = 'xingmanwu-v2';
+const CACHE = 'xingmanwu-v3';
 const ASSETS = [
   '/',
   '/index.html',
   '/css/style.css?v=22',
-  '/js/app.js?v=29',
+  '/js/app.js?v=30',
   '/manifest.json'
 ];
 

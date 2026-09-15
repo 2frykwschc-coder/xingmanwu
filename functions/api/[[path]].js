@@ -144,7 +144,7 @@ export async function onRequest(context) {
       const resExpr =
         'CASE WHEN dm.rc>0 THEN 0 WHEN pd.manga_id IS NOT NULL THEN 2 WHEN fa.manga_id IS NOT NULL THEN 2 WHEN dm.rc IS NULL THEN 1 WHEN dm.total>0 THEN 1 ELSE 2 END';
 
-      const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const wc = where.length ? ' WHERE ' + where.join(' AND ') : '';
       const countQuery = 'SELECT COUNT(*) as c FROM manga ' + wc;
       const joins =
         ' LEFT JOIN (SELECT manga_id, MAX(COALESCE(readable_chapters,0)) rc, MAX(COALESCE(total_chapters,0)) total FROM dex_mapping GROUP BY manga_id) dm ON dm.manga_id=manga.id' +

@@ -377,7 +377,7 @@ async function loadVip(){
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 微信/支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 支付宝/微信扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
       '<div id=myOrdersBox></div>';
     if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
     loadMyOrders();
@@ -400,8 +400,8 @@ function openPay(planId){
     '<div style="font-size:20px;font-weight:700">'+p.name+' ¥'+p.price+'</div>'+
     '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">'+(autoMode?'付款成功后自动开通 VIP，无需等待':'扫收款码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
     '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
-      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信'+(autoMode?'支付':'收款码')+'</button>'+
       '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝'+(autoMode?'支付':'收款码')+'</button>'+
+      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信'+(autoMode?'支付':'收款码')+'</button>'+
     '</div>'+
   '</div>';
 }
