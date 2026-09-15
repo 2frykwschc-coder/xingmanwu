@@ -97,10 +97,19 @@ export async function onRequest(context) {
       return j([...s].sort());
     }
 
-    // -- /api/recent --
+    // -- /api/recent -- (新入库: 站内可读在前, 同类内按最新)
     if (m === 'GET' && path === 'recent') {
+      const resExpr =
+        'CASE WHEN dm.rc>0 THEN 0 WHEN pd.manga_id IS NOT NULL THEN 2 WHEN fa.manga_id IS NOT NULL THEN 2 WHEN dm.rc IS NULL THEN 1 WHEN dm.total>0 THEN 1 ELSE 2 END';
       const r = await db
-        .prepare('SELECT id,title_romaji,title_english,title_native,cover_url,score,popularity,format FROM manga ORDER BY id DESC LIMIT 20')
+        .prepare(
+          'SELECT manga.id,title_romaji,title_english,title_native,cover_url,score,popularity,format,' +
+            resExpr + ' AS res_cls FROM manga' +
+            ' LEFT JOIN (SELECT manga_id, MAX(COALESCE(readable_chapters,0)) rc, MAX(COALESCE(total_chapters,0)) total FROM dex_mapping GROUP BY manga_id) dm ON dm.manga_id=manga.id' +
+            ' LEFT JOIN (SELECT manga_id FROM fix_alt WHERE chapters>0 GROUP BY manga_id) fa ON fa.manga_id=manga.id' +
+            ' LEFT JOIN probe_dead pd ON pd.manga_id=manga.id' +
+            ' ORDER BY res_cls ASC, manga.id DESC LIMIT 20'
+        )
         .all();
       return j({ data: r.results });
     }
