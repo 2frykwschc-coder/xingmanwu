@@ -1,4 +1,4 @@
-// Cloudflare Worker — 星漫屋资源查询 + 聚合站代理
+// Cloudflare Worker — 与术资源查询 + 聚合站代理
 // 部署: wrangler deploy worker.js --name xingmanwu-proxy
 
 const COMICK = "https://api.comick.io";
@@ -107,7 +107,7 @@ async function handleRequest(request) {
   // GET / — 健康检查
   if (path === "/") {
     return json({
-      ok: true, name: "星漫屋 资源代理",
+      ok: true, name: "与术 资源代理",
       endpoints: ["GET /check?q=标题", "GET /proxy?url=..."],
     }, 200, corsHeaders);
   }

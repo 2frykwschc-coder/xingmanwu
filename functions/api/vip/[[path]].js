@@ -1,4 +1,4 @@
-// 星漫屋 VIP 会员 — 固定收款码 + 人工核对开通(防白嫖)
+// 与术 VIP 会员 — 固定收款码 + 人工核对开通(防白嫖)
 // 路由: /api/vip/*
 //
 // 流程:
@@ -17,10 +17,10 @@
 // 需要的静态资源: public/pay/wechat.jpg、public/pay/alipay.jpg (你自己的收款码截图)
 
 const PLANS = {
-  weekly:    { name: '周VIP', amount: 800,   days: 7,   desc: '星漫屋·周VIP会员' },
-  monthly:   { name: '月VIP', amount: 2800,  days: 30,  desc: '星漫屋·月VIP会员' },
-  quarterly: { name: '季VIP', amount: 8800,  days: 90,  desc: '星漫屋·季VIP会员' },
-  yearly:    { name: '年VIP', amount: 18800, days: 365, desc: '星漫屋·年VIP会员' },
+  weekly:    { name: '周VIP', amount: 800,   days: 7,   desc: '与术·周VIP会员' },
+  monthly:   { name: '月VIP', amount: 2800,  days: 30,  desc: '与术·月VIP会员' },
+  quarterly: { name: '季VIP', amount: 8800,  days: 90,  desc: '与术·季VIP会员' },
+  yearly:    { name: '年VIP', amount: 18800, days: 365, desc: '与术·年VIP会员' },
 };
 
 // 可选: 指定管理员用户名 (留空则用「第一个注册的用户」规则)

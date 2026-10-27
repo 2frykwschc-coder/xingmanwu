@@ -1,6 +1,6 @@
 {
   "appId": "com.xingmanwu.app",
-  "appName": "星漫屋",
+  "appName": "与术",
   "webDir": "public",
   "server": {
     "androidScheme": "https"

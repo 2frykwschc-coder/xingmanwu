@@ -337,4 +337,4 @@ app.get('/api/fix-alt-summary',(req,res)=>{try{
   res.json({count:c,totalChapters:tc});
 }catch(e){res.json({count:0,totalChapters:0})}});
 
-await initDB();app.listen(PORT,'0.0.0.0',()=>{console.log(`✨ 星漫屋 http://localhost:${PORT}`)});
+await initDB();app.listen(PORT,'0.0.0.0',()=>{console.log(`✨ 与术 http://localhost:${PORT}`)});

@@ -83,7 +83,7 @@ async function handleRequest(request) {
 
   if (path === "/") {
     return json({
-      ok: true, name: "星漫屋 资源代理",
+      ok: true, name: "与术 资源代理",
       endpoints: ["GET /check?q=标题"],
     }, 200, corsHeaders);
   }
