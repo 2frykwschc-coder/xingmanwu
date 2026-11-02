@@ -369,15 +369,14 @@ async function loadVip(){
       h='<div class=vip-status-card>当前不是 VIP，开通后解锁专属权益 ✨</div>';
     }
     st.innerHTML=h;
-    const c=d.channels||{};
-    pl.innerHTML='<div class=vip-plans>'+d.plans.map(p=>{
+    pl.innerHTML='<div class=vip-plans>'+(vipInfo.plans||[]).map(p=>{
       const tag=p.id==='yearly'?'<span class=vip-tag>最划算</span>':p.id==='monthly'?'<span class=vip-tag>热门</span>':'';
       return '<div class=vip-card onclick="openPay(\''+p.id+'\')">'+
         '<div class=vip-card-name>'+p.name+tag+'</div>'+
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(vipInfo.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
       '<div id=myOrdersBox></div>';
     if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
     loadMyOrders();

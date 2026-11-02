@@ -1,9 +1,9 @@
-const CACHE = 'afkg-v6';
+const CACHE = 'afkg-v7';
 const ASSETS = [
   '/',
   '/index.html',
   '/css/style.css?v=22',
-  '/js/app.js?v=32',
+  '/js/app.js?v=33',
   '/manifest.json'
 ];
 
