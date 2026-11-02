@@ -2,19 +2,19 @@
 // 路由: /api/vip/*
 //
 // 流程:
-//   用户: 选套餐 → 选微信/支付宝 → 看到对应收款码图片 + 应付金额 → 扫码转账
+//   用户: 选套餐 → 支付宝 → 看到收款码图片 + 应付金额 → 扫码转账
 //         → 填交易单号 点「我已付款」→ 状态=待核对
 //   站长: VIP 页底部「管理台」→ 看到待核对订单(用户/套餐/金额/单号) → 对照自己收款记录
 //         → 点「已到账，开通」→ 系统按套餐天数顺延 VIP(幂等)。未到账点「关闭」。
 //
-// ⚠ 原理: 个人固定收款码无法自动验单(微信/支付宝不回调网站)。
-//   要“自动验单+零白嫖”只能换商户版 API(需个体户执照): 微信 Native/支付宝当面付,
+// ⚠ 原理: 个人固定收款码无法自动验单(支付宝不回调网站)。
+//   要“自动验单+零白嫖”只能换商户版 API(需个体户执照): 支付宝当面付,
 //   到账后服务器收到异步通知才开通。拿到执照/商户号后可无缝切换。
 //
 // 管理员识别: users 表 is_admin=1。系统无管理员时，第一个注册的用户自动成为管理员
 // (通常就是你本人)。也可在下方 ADMIN_USERS 里写死用户名。
 //
-// 需要的静态资源: public/pay/wechat.jpg、public/pay/alipay.jpg (你自己的收款码截图)
+// 需要的静态资源: public/pay/alipay.jpg (你自己的收款码截图)
 
 const PLANS = {
   weekly:    { name: '周VIP', amount: 800,   days: 7,   desc: '与术·周VIP会员' },
@@ -26,7 +26,7 @@ const PLANS = {
 // 可选: 指定管理员用户名 (留空则用「第一个注册的用户」规则)
 const ADMIN_USERS = new Set([]);
 
-const QR_IMAGES = { wechat: '/pay/wechat.jpg', alipay: '/pay/alipay.jpg' };
+const QR_IMAGES = { alipay: '/pay/alipay.jpg' };
 
 // ═══ 码支付 / 易支付 聚合支付配置 ══════════════════════════════════════════
 // enabled=true 后: 下单即向平台提交订单 → 返回「动态二维码」给用户扫;
@@ -37,7 +37,7 @@ const MPAY = {
   gateway: 'https://pay.zhiyanchuang.com/mapi.php', // 晓风码支付 服务端下单接口
   pid: 'M2026090317a75b6aa0', // 商户ID (Man 提供)
   key: '3439daed71f1482e57eb727ddb21edb3', // 商户密钥 (Man 提供)
-  typeMap: { wechat: 'wxpay', alipay: 'alipay' }, // 渠道代码: alipay/wxpay/qqpay/usdt
+  typeMap: { alipay: 'alipay' }, // 仅保留支付宝渠道
 };
 
 // ── MD5 纯 JS 实现 (Workers 无内置 MD5, 公开领域算法) ──
@@ -237,7 +237,7 @@ export async function onRequest(context) {
         plans: Object.entries(PLANS).map(([id, p]) => ({
           id, name: p.name, amount: p.amount, price: (p.amount / 100).toFixed(2), days: p.days, desc: p.desc,
         })),
-        channels: { wechat: true, alipay: true },
+        channels: { alipay: true },
         qr: QR_IMAGES,
         mode: MPAY.enabled ? 'auto' : 'manual', // auto=码支付自动验单; manual=固定码站长核对
       });
@@ -269,7 +269,7 @@ export async function onRequest(context) {
       const body = await request.json();
       const plan = PLANS[body.plan];
       if (!plan) return j({ error: '无效的套餐' }, 400);
-      if (body.channel !== 'wechat' && body.channel !== 'alipay') return j({ error: '无效的支付方式' }, 400);
+      if (body.channel !== 'alipay') return j({ error: '仅支持支付宝支付' }, 400);
 
       const orderNo = genOrderNo();
       await db.prepare(

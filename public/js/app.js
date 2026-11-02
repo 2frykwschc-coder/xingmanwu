@@ -377,7 +377,7 @@ async function loadVip(){
         '<div class=vip-card-price>¥<b>'+p.price+'</b><small>/'+p.days+'天</small></div>'+
         '<div class=vip-card-btn>立即开通</div></div>';
     }).join('')+'</div>';
-    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 支付宝/微信扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
+    pl.innerHTML+='<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:12px">'+(d.mode==='auto'?'💡 动态收款码，扫码支付成功即自动开通 VIP，无需等待':'💡 支付宝扫码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
       '<div id=myOrdersBox></div>';
     if(d.isAdmin){pl.innerHTML+='<div id=vipAdminBox style="margin-top:16px"></div>';loadAdminOrders()}
     loadMyOrders();
@@ -401,7 +401,6 @@ function openPay(planId){
     '<div style="color:var(--text-dim);font-size:13px;margin:8px 0 4px">'+(autoMode?'付款成功后自动开通 VIP，无需等待':'扫收款码转账，付款后点「我已付款」提交，站长核对到账后自动开通')+'</div>'+
     '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
       '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'alipay\')">💙 支付宝'+(autoMode?'支付':'收款码')+'</button>'+
-      '<button class="btn pay-channel" onclick="startPay(\''+planId+'\',\'wechat\')">💚 微信'+(autoMode?'支付':'收款码')+'</button>'+
     '</div>'+
   '</div>';
 }
@@ -418,9 +417,9 @@ async function startPay(planId,channel){
       // ═══ 码支付动态二维码模式: 扫码支付 → 平台异步通知 → 自动开通 ═══
       mc.innerHTML='<div style="padding:20px;text-align:center">'+
         '<div style="font-size:18px;font-weight:700">请扫码支付 ¥'+(d.amount/100).toFixed(2)+'</div>'+
-        '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">'+(channel==='wechat'?'微信':'支付宝')+' · 订单 '+esc(d.order_no)+'</div>'+
+        '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">支付宝 · 订单 '+esc(d.order_no)+'</div>'+
         '<div style="display:inline-block;background:#fff;padding:14px;border-radius:12px;border:1px solid #eee"><div id=qrBox style="width:230px;height:230px"></div></div>'+
-        '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.9">① 打开'+(channel==='wechat'?'微信':'支付宝')+'「扫一扫」，扫上方二维码<br>② 支付成功后<b style="color:#81c784">自动开通 VIP</b>，无需任何操作<br>③ 已付款但还没开通？到账通知一般几秒~1分钟，本页会自动刷新</div>'+
+        '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.9">① 打开支付宝「扫一扫」，扫上方二维码<br>② 支付成功后<b style="color:#81c784">自动开通 VIP</b>，无需任何操作<br>③ 已付款但还没开通？到账通知一般几秒~1分钟，本页会自动刷新</div>'+
         (d.pay_url&&d.pay_url!==d.qrcode?'<div style="margin-top:6px"><a href="'+esc(d.pay_url)+'" target=_blank rel=noopener style="color:#7fb2ff;font-size:13px">二维码打不开？点此跳转收银台支付 ↗</a></div>':'')+
         '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
         '<div style="margin-top:14px"><button class="btn btn-secondary" onclick="closeModal()">关闭</button></div>'+
@@ -448,9 +447,9 @@ async function startPay(planId,channel){
       const qrImg=(vipInfo?.qr||{})[channel]||'/pay/'+channel+'.jpg';
       mc.innerHTML='<div style="padding:20px;text-align:center">'+
         '<div style="font-size:18px;font-weight:700">请扫码转账 ¥'+(d.amount/100).toFixed(2)+'</div>'+
-        '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">'+(channel==='wechat'?'微信收款码':'支付宝收款码')+' · 金额'+(d.amount/100).toFixed(2)+'元 · 订单 '+d.order_no+'</div>'+
+        '<div style="color:var(--text-dim);font-size:13px;margin:6px 0 12px">支付宝收款码 · 金额'+(d.amount/100).toFixed(2)+'元 · 订单 '+d.order_no+'</div>'+
         '<div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;border:1px solid #eee"><img src="'+qrImg+'" alt="收款码" style="display:block;max-height:300px;max-width:66vw;object-fit:contain"></div>'+
-        '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.8">① 用'+(channel==='wechat'?'微信':'支付宝')+'扫上方收款码，转账 <b>¥'+(d.amount/100).toFixed(2)+'</b><br>② 付款后点击下方「我已付款」<br>③ 站长核对到账后自动开通（一般几分钟，页面会自动刷新状态）</div>'+
+        '<div style="margin-top:12px;font-size:13px;color:var(--text-dim);text-align:left;display:inline-block;line-height:1.8">① 用支付宝扫上方收款码，转账 <b>¥'+(d.amount/100).toFixed(2)+'</b><br>② 付款后点击下方「我已付款」<br>③ 站长核对到账后自动开通（一般几分钟，页面会自动刷新状态）</div>'+
         '<div style="margin-top:12px"><input id=payNoInp placeholder="交易单号（选填，填了站长核对更快）" style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;width:250px;max-width:85%;font-size:13px"></div>'+
         '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
         '<div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
@@ -543,7 +542,7 @@ async function loadAdminOrders(){
           '<button class="btn btn-sm btn-secondary" style="margin-left:6px" onclick="admClose(\''+o.order_no+'\')">关闭</button>'
         : '';
       return '<div style="padding:8px;border:1px solid rgba(128,128,128,.2);border-radius:8px;margin-bottom:6px;background:rgba(128,128,128,.05)">'+
-        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px"><b>'+esc(o.username||('#'+o.user_id))+'</b><span>'+esc(vipPlanName(o.plan))+' ¥'+(o.amount/100).toFixed(2)+' · '+(o.channel==='wechat'?'💚微信':'💙支付宝')+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px"><b>'+esc(o.username||('#'+o.user_id))+'</b><span>'+esc(vipPlanName(o.plan))+' ¥'+(o.amount/100).toFixed(2)+' · '+(o.channel==='wechat'?'已停用渠道':'💙支付宝')+'</span></div>'+
         '<div style="color:var(--text-dim);margin:3px 0">'+fmtT(o.created_at)+' · '+esc(o.order_no)+(o.platform_order?' · 付款单号: '+esc(o.platform_order):'')+'</div>'+
         '<div style="display:flex;align-items:center;flex-wrap:wrap">'+orderStatusHtml(o)+actions+'</div>'+
       '</div>';
