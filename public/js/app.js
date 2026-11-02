@@ -1,5 +1,5 @@
 // 部署 Worker 后把 URL 填这里，留空则跳过
-const API_URL = "https://xingmanwu-api.rtxn7yj57c.workers.dev";
+const API_URL = "";
 const WORKER_URL = ''; // e.g. 'https://xingmanwu-proxy.xxx.workers.dev'
 
 let st={page:'home',bp:1,cp:1};const $=id=>document.getElementById(id);

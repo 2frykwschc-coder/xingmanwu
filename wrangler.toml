@@ -9,14 +9,14 @@
 # 绑定名: DB (在 functions/api/[[path]].js 中通过 env.DB 访问)
 # [[d1_databases]]
 # binding = "DB"
-# database_name = "xingmanwu"
+# database_name = "afkg"
 # database_id = "<创建后获得 ID>"
 
 # ── Worker（外部资源代理） ──
 # 部署: npx wrangler deploy worker.js --name xingmanwu-proxy
 # 部署后获得 URL，填入 public/js/app.js 的 WORKER_URL
 
-name = "xingmanwu"
+name = "afkg"
 main = "worker.js"
 compatibility_date = "2025-04-01"
 
