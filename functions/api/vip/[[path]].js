@@ -33,7 +33,7 @@ const QR_IMAGES = { alipay: '/pay/alipay.jpg' };
 // 用户付款成功后平台 POST 异步通知本域名 /api/vip/pay/notify, 验签+金额校验通过才自动开通 VIP。
 // 参数在平台后台「商户信息/对接文档」里: pid=商户ID, key=商户密钥, gateway=下单接口地址。
 const MPAY = {
-  enabled: true,           // ← 已激活: 码支付动态二维码自动验单
+  enabled: false,          // ← 2026-11-04 暂停: 平台返回「PID不存在」(M2026090317a75b6aa0)，先回退固定收款码+人工核对
   gateway: 'https://pay.zhiyanchuang.com/mapi.php', // 晓风码支付 服务端下单接口
   pid: 'M2026090317a75b6aa0', // 商户ID (Man 提供)
   key: '3439daed71f1482e57eb727ddb21edb3', // 商户密钥 (Man 提供)
