@@ -480,7 +480,8 @@ export async function onRequest(context) {
       for (const imgUrl of urls) {
         try {
           const r = await fetch(imgUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Xingmanwu/1.0)', 'Referer': 'https://mangadex.org/' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Xingmanwu/1.0)' },
+            redirect: 'manual', // 3xx 是 MangaDex 的 edge 挑战页，跟过去只会拿到 HTML，直接跳过
             signal: AbortSignal.timeout(10000),
           });
           if (!r.ok) continue;
