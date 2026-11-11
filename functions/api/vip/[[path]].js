@@ -33,10 +33,10 @@ const QR_IMAGES = { alipay: '/pay/alipay.jpg' };
 // 用户付款成功后平台 POST 异步通知本域名 /api/vip/pay/notify, 验签+金额校验通过才自动开通 VIP。
 // 参数在平台后台「商户信息/对接文档」里: pid=商户ID, key=商户密钥, gateway=下单接口地址。
 const MPAY = {
-  enabled: false,          // ← 2026-11-04 暂停: 平台返回「PID不存在」(M2026090317a75b6aa0)，先回退固定收款码+人工核对
-  gateway: 'https://pay.zhiyanchuang.com/mapi.php', // 晓风码支付 服务端下单接口
-  pid: 'M2026090317a75b6aa0', // 商户ID (Man 提供)
-  key: '3439daed71f1482e57eb727ddb21edb3', // 商户密钥 (Man 提供)
+  enabled: true,           // 2026-11-11 切换至 ZPAY (zpayz.cn)，下单+回调自动开通
+  gateway: 'https://zpayz.cn/mapi.php', // ZPAY 服务端下单接口 (易支付协议)
+  pid: '2026110420274491', // 商户ID (Man 提供)
+  key: 'EDsdYUbvPESVOPKRmnqJC2LICX4HMHH2', // 商户密钥 (Man 提供)
   typeMap: { alipay: 'alipay' }, // 仅保留支付宝渠道
 };
 
@@ -195,6 +195,10 @@ export async function onRequest(context) {
   async function mpaySubmit(orderNo, amountFen, name, channel) {
     try {
       const origin = url.origin;
+      const ip = request.headers.get('CF-Connecting-IP')
+        || (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim()
+        || '127.0.0.1';
+      const ua = request.headers.get('User-Agent') || '';
       const params = {
         pid: MPAY.pid,
         type: MPAY.typeMap[channel] || 'alipay',
@@ -203,6 +207,8 @@ export async function onRequest(context) {
         return_url: origin + '/',
         name: name + ' ' + orderNo,
         money: (amountFen / 100).toFixed(2),
+        clientip: ip,
+        device: /Mobile|Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'pc',
         sign_type: 'MD5',
       };
       params.sign = mpaySign(params);
@@ -373,13 +379,18 @@ export async function onRequest(context) {
       return j({ ok: true });
     }
 
-    // -- POST /api/vip/pay/notify (码支付异步到账通知: 验签→金额校验→自动开通, 防白嫖) --
-    if (m === 'POST' && path === 'pay/notify') {
+    // -- GET/POST /api/vip/pay/notify (ZPAY 异步到账通知: 验签→金额校验→自动开通, 防白嫖) --
+    // ZPAY 文档: 异步通知用 GET; 部分平台用 POST, 两种都接。
+    if ((m === 'GET' || m === 'POST') && path === 'pay/notify') {
       if (!MPAY.enabled) return j({ error: 'not enabled' }, 404);
-      const raw = await request.text().catch(() => '');
       const params = {};
-      try { new URLSearchParams(raw).forEach((v, k) => { params[k] = v; }); } catch (e) {}
-      if (!Object.keys(params).length && raw) { try { Object.assign(params, JSON.parse(raw)); } catch (e) {} }
+      if (m === 'GET') {
+        url.searchParams.forEach((v, k) => { params[k] = v; });
+      } else {
+        const raw = await request.text().catch(() => '');
+        try { new URLSearchParams(raw).forEach((v, k) => { params[k] = v; }); } catch (e) {}
+        if (!Object.keys(params).length && raw) { try { Object.assign(params, JSON.parse(raw)); } catch (e) {} }
+      }
       const okSign = mpayVerify(params);
       const successStatus = String(params.trade_status || '') === 'TRADE_SUCCESS' || String(params.status || '') === 'paid';
       if (!okSign || !successStatus) return new Response('fail');
