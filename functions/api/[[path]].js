@@ -465,21 +465,23 @@ export async function onRequest(context) {
       const base = url.searchParams.get('base') || '';
 
       const urls = [];
+      // 优先走 uploads.mangadex.org（实测比 at-home 的 base CDN 更稳），
+      // base 放后面备选；之前 base 在前且 15s 超时，图片会卡很久甚至被上游 429。
+      urls.push(`https://uploads.mangadex.org/data/${hash}/${filename}`);
+      urls.push(`https://uploads.mangadex.org/data-saver/${hash}/${filename}`);
       const baseClean = base.replace(/\/+$/, '');
       if (baseClean) {
         urls.push(`${baseClean}/data/${hash}/${filename}`);
         urls.push(`${baseClean}/data-saver/${hash}/${filename}`);
       }
-      urls.push(`https://uploads.mangadex.org/data/${hash}/${filename}`);
-      urls.push(`https://uploads.mangadex.org/data-saver/${hash}/${filename}`);
       urls.push(`https://mangadex.org/data/${hash}/${filename}`);
       urls.push(`https://mangadex.org/data-saver/${hash}/${filename}`);
 
       for (const imgUrl of urls) {
         try {
           const r = await fetch(imgUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Xingmanwu/1.0)' },
-            signal: AbortSignal.timeout(15000),
+            headers: { 'User-Agent': 'Mozilla/5.0 (Xingmanwu/1.0)', 'Referer': 'https://mangadex.org/' },
+            signal: AbortSignal.timeout(10000),
           });
           if (!r.ok) continue;
           const blob = await r.blob();

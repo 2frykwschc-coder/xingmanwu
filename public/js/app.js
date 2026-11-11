@@ -275,7 +275,7 @@ function renderPage(){
     p.innerHTML=`
       <div style=display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 60px);padding:10px;position:relative>
         <div style=position:absolute;left:0;top:0;bottom:0;width:35%;z-index:10 onclick="prevPage()"></div>
-        <img src="${imgUrl(pg)}" 
+        <img src="${imgUrl(pg)}" loading="eager" decoding="async"
           onerror="var t=this;if(!t.dataset.r){t.dataset.r=1;this.style.opacity='0.4'}else{t.style.opacity='0.2'}"
           style=max-width:100%;max-height:calc(100vh - 80px);object-fit:contain;border-radius:4px;box-shadow:0 2px 20px rgba(0,0,0,.3)>
         <div onclick="nextPage()" style=position:absolute;right:0;top:0;bottom:0;width:35%;z-index:10></div>
@@ -289,7 +289,7 @@ function renderPage(){
     p.innerHTML=rd.pages.map((pg,i)=>`
       <div class=reader-page style=text-align:center;padding:4px 0>
         <div style=color:var(--text-dim);font-size:11px;padding:4px>${i+1}/${total}</div>
-        <img src="${imgUrl(pg)}" 
+        <img src="${imgUrl(pg)}" loading="lazy" decoding="async"
           onerror="var t=this;if(!t.dataset.r){t.dataset.r=1;this.style.opacity='0.4'}else{t.style.opacity='0.2'}"
           style=width:100%;max-width:800px;display:block;margin:0 auto;border-radius:4px>
       </div>`).join('');

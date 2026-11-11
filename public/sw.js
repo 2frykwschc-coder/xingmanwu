@@ -1,4 +1,4 @@
-const CACHE = 'afkg-v8';
+const CACHE = 'afkg-v9';
 const ASSETS = [
   '/',
   '/index.html',
