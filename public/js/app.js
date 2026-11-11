@@ -423,22 +423,19 @@ async function startPay(planId,channel){
         '<div id=payStatus style="margin-top:12px;font-size:14px;color:var(--text-dim)"></div>'+
         '<div style="margin-top:14px"><button class="btn btn-secondary" onclick="closeModal()">关闭</button></div>'+
       '</div>';
-      // 有平台二维码图片直接用; 没有则用支付链接本地生成二维码; 再不行显示原文
+      // d.qrcode 是平台返回的支付链接(不是图片地址), 一律本地生成二维码;
+      // 之前把它当 <img src> 会加载失败, 破图占位把二维码顶歪/撑开 → 这就是「位移」。
       var qrBox=$('qrBox');
-      var qrOk=false;
-      if(d.qrcode){
-        var im=document.createElement('img');
-        im.src=d.qrcode;im.style.cssText='width:230px;height:230px;border-radius:4px;display:block';
-        im.onerror=function(){renderPayQr(d.pay_url||d.qrcode)};
-        qrBox.appendChild(im);qrOk=true;
-      }
-      if(!qrOk)renderPayQr(d.pay_url||d.qrcode);
-      function renderPayQr(url){
-        if(!url)return;
+      qrBox.innerHTML='';
+      var qrText=d.qrcode||d.pay_url||'';
+      if(qrText){
         try{
-          new QRCode(qrBox,{text:url,width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
+          new QRCode(qrBox,{text:qrText,width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
+          var qrImg=qrBox.querySelector('img'),qrCanvas=qrBox.querySelector('canvas');
+          if(qrImg)qrImg.style.display='none';
+          if(qrCanvas)qrCanvas.style.cssText='width:230px;height:230px;display:block;margin:0 auto';
         }catch(e2){
-          qrBox.innerHTML='<div style="font-size:12px;color:#a00;padding:8px">二维码生成失败</div><div style="font-size:11px;color:#333;word-break:break-all;padding:0 8px 8px">'+esc(url)+'</div>';
+          qrBox.innerHTML='<div style="font-size:12px;color:#a00;padding:8px">二维码生成失败</div><div style="font-size:11px;color:#333;word-break:break-all;padding:0 8px 8px">'+esc(qrText)+'</div>';
         }
       }
     }else{
